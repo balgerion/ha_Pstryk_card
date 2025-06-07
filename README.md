@@ -1,5 +1,4 @@
 # ha_Pstryk_card
-# ha_Pstryk_card
 
 Przykładowe konfiguracje ze wszystkimi opcjami:
 
