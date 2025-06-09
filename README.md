@@ -65,7 +65,7 @@ widget_effect: fill               # none | fill (dla bars)
 widget_hours: 12                  # 1-48
 hover_effect: glow                # none | lift | glow | shake | pulse
 attribute_config: average_24      # next_hour | average_remaining | average_24 | null | custom_attribute
----
+```
 
 ##Super kompaktowy (minimalny)
 ```yaml
