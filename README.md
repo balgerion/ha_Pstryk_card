@@ -55,7 +55,7 @@ hover_effect: lift                # none | lift | glow | shake | pulse
 click_action: none                # none | more-info
 ```
 ##Kompaktowy z słupkami
-```
+```yaml
 type: custom:pstryk-card
 buy_entity: sensor.pstryk_current_buy_price
 sell_entity: sensor.pstryk_current_sell_price
@@ -66,8 +66,9 @@ widget_hours: 12                  # 1-48
 hover_effect: glow                # none | lift | glow | shake | pulse
 attribute_config: average_24      # next_hour | average_remaining | average_24 | null | custom_attribute
 ---
-~##Super kompaktowy (minimalny)
-```
+
+##Super kompaktowy (minimalny)
+```yaml
 type: custom:pstryk-card
 buy_entity: sensor.pstryk_current_buy_price
 sell_entity: sensor.pstryk_current_sell_price
