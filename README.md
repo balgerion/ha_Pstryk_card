@@ -35,7 +35,7 @@
 
 ---
 
-## 🚀 Szybki start
+## 🚀 Szybki start - przykłady
 
 ##full
                    
@@ -47,7 +47,7 @@ card_mode: full                   # full | compact | super_compact
 show_title: true                  # true | false
 show_legend: true                 # true | false
 show_widget: sparkline            # none | bars | sparkline
-widget_effect: pulse              # none | pulse (dla sparkline)
+widget_effect: pulse              # none | pulse (sparkline) | fill (bars)
 widget_hours: 24                  # 1-48
 alert_buy_above: 1.15             # liczba lub null
 alert_sell_below: 0.25            # liczba lub null
@@ -61,7 +61,7 @@ buy_entity: sensor.pstryk_current_buy_price
 sell_entity: sensor.pstryk_current_sell_price
 card_mode: compact                # full | compact | super_compact
 show_widget: bars                 # none | bars | sparkline
-widget_effect: fill               # none | fill (dla bars)
+widget_effect: fill               # none | fill (bars) | pulse (sparkline) 
 widget_hours: 12                  # 1-48
 hover_effect: glow                # none | lift | glow | shake | pulse
 attribute_config: average_24      # next_hour | average_remaining | average_24 | null | custom_attribute
