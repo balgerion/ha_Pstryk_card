@@ -23,7 +23,7 @@
 1. Otwórz HACS → **+**
 2. Wybierz **Custom repositories**
 3. Wklej URL: `https://github.com/balgerion/ha_Pstryk_card`
-4. W kategorii zaznacz **Lovelace** i kliknij **Add**
+4. W kategorii zaznacz **Dashboard** i kliknij **Add**
 5. Zainstaluj **Pstryk Energy Card**
 6. Zrestartuj Home Assistant
 
