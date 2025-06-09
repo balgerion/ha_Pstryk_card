@@ -1,0 +1,6 @@
+{
+  "name": "Pstryk Energy Card",
+  "filename": "pstryk-card.js",
+  "render_readme": true,
+  "type": "lovelace",
+}
