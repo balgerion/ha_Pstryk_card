@@ -13,7 +13,7 @@
 * 🌍 Obsługa PL i EN – karta sama wykryje język
 * 🎯 Efekty i zbędne bajery
   
-![{D1364F57-26D6-4BB2-BCDA-28E0C8ECE00C}](https://github.com/user-attachments/assets/9c4ced5f-e4bd-4ea9-8824-1daec9cf21d1)
+![{5EDCE447-9F67-41E2-A252-3CA2A7B3BBA4}](https://github.com/user-attachments/assets/4307f571-5e1e-412d-96ca-aad70acf050c)
 ![{4FC17EE9-74AA-4445-BF92-BE63CAB8F9BD}](https://github.com/user-attachments/assets/e65754ac-1a92-49d7-bd03-0af2f87a8117)
 
 ## 📦 Jak zainstalować?
