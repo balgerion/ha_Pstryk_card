@@ -29,10 +29,10 @@
 
 **2. Ręcznie**
 
-1. Ściągnij plik `pstryk-card.js` i wrzuć do `/config/www/`
+1. Ściągnij plik `pstryk-card.js` i wrzuć do `/www/community/pstryk-card`
 2. W Home Assistant: **Settings → Dashboards → Resources → Add Resource**
 
-   * URL: `/local/pstryk-card.js`
+   * URL: `/local/community/pstryk-card/pstryk-card.js`
    * Typ: **JavaScript Module**
 3. Zrestartuj
 
