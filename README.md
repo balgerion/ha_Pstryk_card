@@ -20,7 +20,7 @@
 
 **1. HACS (najprościej)**
 
-1. Otwórz HACS → **Frontend** → **+**
+1. Otwórz HACS → **+**
 2. Wybierz **Custom repositories**
 3. Wklej URL: `https://github.com/balgerion/ha_Pstryk_card`
 4. W kategorii zaznacz **Lovelace** i kliknij **Add**
