@@ -7,9 +7,13 @@
 ## Co potrafi?
 
 * Trzy tryby wyświetlania: **pełny**, **kompaktowy**, **super kompaktowy**
-* Widgety: słupki lub linia z animacją
-* Alerty: ostrzeżenia, gdy cena przekracza ustalone progi
+* Widgety: słupki lub linia z cenami do końca doby
+* Znacznik aktualnej godziny: pulsująca kropka (sparkline) lub wypełniający się słupek (bars)
+* Obsługa cen ujemnych na wykresach (słupki w dół, linia zera)
+* Alerty: pulsująca ramka i badge, gdy cena przekroczy ustalone progi
 * Zmiana koloru na czerwony/zielony w zależności od ustawień cen w integracji
+* Dodatkowy wiersz z atrybutem: cena następnej godziny, średnia do końca doby lub średnia 24h
+* Klik w kafelek otwiera okno more-info encji (opcjonalnie)
 * Obsługa PL i EN – karta sama wykryje język
 * Efekty i zbędne bajery
 
@@ -41,8 +45,8 @@
 
 ## Szybki start - przykłady
 
-##full
-                   
+### Pełny
+
 ```yaml
 type: custom:pstryk-card
 buy_entity: sensor.pstryk_current_buy_price
@@ -52,13 +56,14 @@ show_title: true                  # true | false
 show_legend: true                 # true | false
 show_widget: sparkline            # none | bars | sparkline
 widget_effect: pulse              # none | pulse (sparkline) | fill (bars)
-widget_hours: 24                  # 1-48
+widget_hours: 24                  # 1-24
 alert_buy_above: 1.15             # liczba lub null
 alert_sell_below: 0.25            # liczba lub null
 hover_effect: lift                # none | lift | glow | shake | pulse
 click_action: none                # none | more-info
 ```
-##Kompaktowy z słupkami
+### Kompaktowy ze słupkami
+
 ```yaml
 type: custom:pstryk-card
 buy_entity: sensor.pstryk_current_buy_price
@@ -66,12 +71,13 @@ sell_entity: sensor.pstryk_current_sell_price
 card_mode: compact                # full | compact | super_compact
 show_widget: bars                 # none | bars | sparkline
 widget_effect: fill               # none | fill (bars) | pulse (sparkline) 
-widget_hours: 12                  # 1-48
+widget_hours: 12                  # 1-24
 hover_effect: glow                # none | lift | glow | shake | pulse
 attribute_config: average_24      # next_hour | average_remaining | average_24 | null | custom_attribute
 ```
 
-##Super kompaktowy (minimalny)
+### Super kompaktowy (minimalny)
+
 ```yaml
 type: custom:pstryk-card
 buy_entity: sensor.pstryk_current_buy_price
@@ -83,12 +89,17 @@ alert_sell_below: 0.1             # liczba lub null
 
 ## Wszystkie opcje
 
-* **buy\_entity** (`string`) – encja z ceną zakupu (np. `sensor.pstryk_current_buy_price`)
-* **sell\_entity** (`string`) – encja z ceną sprzedaży
-* **card\_mode** (`full`/`compact`/`super_compact`) – wybierz wygląd karty
-* **title** (`string`) – tekst nagłówka (domyślnie "Energy Prices")
-* **show\_title** (`true`/`false`) – wyświetl tytuł
-* **show\_legend** (`true`/`false`) – legenda kolorów (tylko w `full`)
-* **attribute\_config** (`next_hour`/`average_remaining`/`average_24`/`null`/`custom`) – dodatkowy atrybut
-* **show\_widget** (`none`/`bars`/`sparkline`) – typ wykresu
-* **widget\_effect** (`none`/`pulse`/`fill`) – animacja wykresu (pulse (sparkline), fill (bars))
+* **buy\_entity** (`string`, wymagane) – encja z ceną zakupu (np. `sensor.pstryk_current_buy_price`)
+* **sell\_entity** (`string`, wymagane) – encja z ceną sprzedaży
+* **card\_mode** (`full`/`compact`/`super_compact`, domyślnie `full`) – wygląd karty
+* **title** (`string`, domyślnie `Energy Prices`) – tekst nagłówka
+* **show\_title** (`true`/`false`, domyślnie `true`) – wyświetl tytuł (w `super_compact` zawsze ukryty)
+* **show\_legend** (`true`/`false`, domyślnie `true` w `full`) – legenda kolorów (tylko w `full`)
+* **attribute\_config** (`next_hour`/`average_remaining`/`average_24`/nazwa atrybutu/`null`, domyślnie `next_hour`) – dodatkowy wiersz pod ceną: następna godzina, średnia do końca doby, średnia 24h albo dowolny atrybut encji; `null` wyłącza (w `super_compact` zawsze wyłączony)
+* **show\_widget** (`none`/`bars`/`sparkline`, domyślnie `none`) – wykres cen do końca doby (w `super_compact` niedostępny)
+* **widget\_hours** (`1-24`, domyślnie `24`, w `compact` `12`) – ile godzin pokazać na wykresie, licząc od bieżącej (maksymalnie do końca doby)
+* **widget\_effect** (`none`/`pulse`/`fill`, domyślnie `none`) – znacznik aktualnej godziny: `pulse` = pulsująca kropka (sparkline), `fill` = wypełniający się słupek z etykietą godziny (bars)
+* **alert\_buy\_above** (liczba lub `null`, domyślnie `null`) – alert (pulsująca ramka + badge), gdy cena zakupu przekroczy próg
+* **alert\_sell\_below** (liczba lub `null`, domyślnie `null`) – alert, gdy cena sprzedaży spadnie poniżej progu
+* **hover\_effect** (`none`/`lift`/`glow`/`shake`/`pulse`, domyślnie `lift`) – animacja kafelka po najechaniu myszką
+* **click\_action** (`none`/`more-info`, domyślnie `none`) – kliknięcie kafelka otwiera okno more-info encji
