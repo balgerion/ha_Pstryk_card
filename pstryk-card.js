@@ -29,18 +29,14 @@ class PstrykCard extends HTMLElement {
       throw new Error(`Invalid widget_effect: ${config.widget_effect}. Use: ${validEffects.join(', ')}`);
     }
     
-    const cardMode = config.card_mode || 'full';
-    
-    this._config = this._applyModeDefaults({
-      ...config,
-      card_mode: cardMode
-    });
+    this._config = this._applyModeDefaults(config);
   }
 
   _applyModeDefaults(config) {
     const mode = config.card_mode || 'full';
-    
+
     const defaults = {
+      card_mode: mode,
       title: 'Energy Prices',
       show_title: true,
       show_legend: true,
@@ -129,8 +125,6 @@ class PstrykCard extends HTMLElement {
         'next_hour': isPolish ? 'Następna godzina' : 'Next hour',
         'average_24': isPolish ? 'Średnia 24h' : 'Average 24h',
         'alert': isPolish ? 'Uwaga!' : 'Alert!',
-        'high_price': isPolish ? 'Wysoka cena' : 'High price',
-        'low_price': isPolish ? 'Niska cena' : 'Low price',
         'no_data': isPolish ? 'Brak danych' : 'No data',
         'entity_not_found': isPolish ? 'Nie znaleziono encji' : 'Entity not found'
       };
@@ -249,11 +243,8 @@ class PstrykCard extends HTMLElement {
   createSparkline(data, height, color, dotPosition) {
     if (!data || data.length < 2) return '';
     
-    const min = Math.min(...data);
-    const max = Math.max(...data);
-    
-    const displayMin = Math.min(min, 0);
-    const displayMax = Math.max(max, 0);
+    const displayMin = Math.min(...data, 0);
+    const displayMax = Math.max(...data, 0);
     const range = displayMax - displayMin || 1;
     
     const viewBoxWidth = 200;
@@ -348,14 +339,14 @@ class PstrykCard extends HTMLElement {
       let barHeight, y;
       
       if (price >= 0) {
-        barHeight = ((price - 0) / range) * chartHeight;
+        barHeight = (price / range) * chartHeight;
         y = zeroY - barHeight;
       } else {
         barHeight = ((0 - price) / range) * chartHeight;
         y = zeroY;
       }
-      
-      barHeight = Math.max(Math.abs(barHeight), 1);
+
+      barHeight = Math.max(barHeight, 1);
 
       if (index === 0 && this._config.widget_effect === 'fill') {
         const filledHeight = barHeight * dotPosition;
@@ -415,8 +406,6 @@ class PstrykCard extends HTMLElement {
   }
 
   handleClick(entityId) {
-    if (!this._config.click_action || this._config.click_action === 'none') return;
-    
     if (this._config.click_action === 'more-info') {
       const event = new CustomEvent('hass-more-info', {
         detail: { entityId },
