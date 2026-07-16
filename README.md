@@ -1,6 +1,6 @@
 # Pstryk Energy Card dla Home Assistant
 
-![Version](https://img.shields.io/badge/version-4.1.0-blue.svg) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-4.2.0-blue.svg) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ---
 
@@ -11,6 +11,10 @@
 * Znacznik aktualnej godziny: pulsująca kropka (sparkline) lub wypełniający się słupek (bars)
 * Obsługa cen ujemnych na wykresach (słupki w dół, linia zera)
 * Alerty: pulsująca ramka i badge, gdy cena przekroczy ustalone progi
+* Znacznik Tanio/Drogo prosto z API Pstryka (opcjonalny)
+* Cena i godzina po najechaniu na słupek wykresu
+* Etykiety min/max na wykresie liniowym
+* Ikonka w rogu kafelka, gdy karta pokazuje dane z cache (awaria API)
 * Zmiana koloru na czerwony/zielony w zależności od ustawień cen w integracji
 * Dodatkowy wiersz z atrybutem: cena następnej godziny, średnia do końca doby lub średnia 24h
 * Klik w kafelek otwiera okno more-info encji (opcjonalnie)
@@ -99,6 +103,7 @@ alert_sell_below: 0.1             # liczba lub null
 * **show\_widget** (`none`/`bars`/`sparkline`, domyślnie `none`) – wykres cen do końca doby (w `super_compact` niedostępny)
 * **widget\_hours** (`1-24`, domyślnie `24`, w `compact` `12`) – ile godzin pokazać na wykresie, licząc od bieżącej (maksymalnie do końca doby)
 * **widget\_effect** (`none`/`pulse`/`fill`, domyślnie `none`) – znacznik aktualnej godziny: `pulse` = pulsująca kropka (sparkline), `fill` = wypełniający się słupek z etykietą godziny (bars)
+* **show\_price\_status** (`true`/`false`, domyślnie `false`) – badge Tanio/Drogo w lewym górnym rogu kafelka wg flag `Is cheap`/`Is expensive` z API (w `super_compact` niedostępny)
 * **alert\_buy\_above** (liczba lub `null`, domyślnie `null`) – alert (pulsująca ramka + badge), gdy cena zakupu przekroczy próg
 * **alert\_sell\_below** (liczba lub `null`, domyślnie `null`) – alert, gdy cena sprzedaży spadnie poniżej progu
 * **hover\_effect** (`none`/`lift`/`glow`/`shake`/`pulse`, domyślnie `lift`) – animacja kafelka po najechaniu myszką
