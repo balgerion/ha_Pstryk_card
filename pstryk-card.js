@@ -305,11 +305,11 @@ class PstrykCard extends HTMLElement {
     const dataMin = Math.min(...data);
     const dataMax = Math.max(...data);
     const yFor = (v) => paddingY + chartHeight - ((v - displayMin) / range) * chartHeight;
-    const maxLabelY = Math.max(yFor(dataMax) - 2, 6);
-    const minLabelY = Math.min(yFor(dataMin) + 7, viewBoxHeight - 1);
+    const maxLabelY = Math.max(yFor(dataMax) - 3, 8);
+    const minLabelY = Math.min(yFor(dataMin) + 10, viewBoxHeight - 1);
     const minMaxLabels = `
-      <text x="${paddingX}" y="${maxLabelY}" font-size="6" fill="#888888" opacity="0.9">${dataMax.toFixed(2)}</text>
-      <text x="${paddingX}" y="${minLabelY}" font-size="6" fill="#888888" opacity="0.9">${dataMin.toFixed(2)}</text>
+      <text x="${paddingX}" y="${maxLabelY}" font-size="8" fill="#888888" opacity="0.9">${dataMax.toFixed(2)}</text>
+      <text x="${paddingX}" y="${minLabelY}" font-size="8" fill="#888888" opacity="0.9">${dataMin.toFixed(2)}</text>
     `;
 
     const step = chartWidth / (data.length - 1);
@@ -381,6 +381,7 @@ class PstrykCard extends HTMLElement {
           <g>
             ${tooltip}
             <rect
+              class="bar"
               x="${x}"
               y="${y}"
               width="${barWidth}"
@@ -414,6 +415,7 @@ class PstrykCard extends HTMLElement {
 
       return `
         <rect
+          class="bar"
           x="${x}"
           y="${y}"
           width="${barWidth}"
@@ -787,6 +789,12 @@ class PstrykCard extends HTMLElement {
           opacity: 0.6;
           --mdc-icon-size: 14px;
         }
+        .bar {
+          transition: opacity 0.15s ease;
+        }
+        .bar:hover, g:hover .bar {
+          opacity: 0.85;
+        }
         @keyframes alertPulseBorder {
           0%, 100% { 
             border-color: var(--divider-color);
@@ -882,5 +890,5 @@ window.customCards.push({
   name: 'Pstryk Energy Card',
   description: 'Display energy prices with color coding, widgets (sparkline/bars), and alerts',
   preview: true,
-  version: '4.2.0'
+  version: '4.2.1'
 });
