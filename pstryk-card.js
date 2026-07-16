@@ -1,75 +1,3 @@
-/**
- * Pstryk Energy Card v4.1.0
- * 
- * Przykładowe konfiguracje:
- * 
- * FULL MODE:
- * type: custom:pstryk-card
- * buy_entity: sensor.pstryk_current_buy_price
- * sell_entity: sensor.pstryk_current_sell_price
- * card_mode: full # full | compact | super_compact
- * title: Energy Prices
- * show_title: true # true | false
- * show_legend: true # true | false
- * attribute_config: next_hour # next_hour | average_remaining | average_24 | custom_attribute_name | null
- * hover_effect: lift # none | lift | glow | shake | pulse
- * show_widget: sparkline # none | bars | sparkline
- * widget_hours: 24 # liczba godzin do pokazania (1-48)
- * widget_effect: pulse # none | pulse (dla sparkline) | fill (dla bars)
- * alert_buy_above: 1.15 # próg alertu lub null
- * alert_sell_below: 0.25 # próg alertu lub null
- * click_action: none # none | more-info
- * debug: false # true | false
- * 
- * COMPACT MODE:
- * type: custom:pstryk-card
- * buy_entity: sensor.pstryk_current_buy_price
- * sell_entity: sensor.pstryk_current_sell_price
- * card_mode: compact
- * title: Energy Prices
- * show_title: true # true | false
- * show_legend: false # domyślnie false dla compact
- * attribute_config: average_24 # next_hour | average_remaining | average_24 | custom_attribute_name | null
- * hover_effect: glow # none | lift | glow | shake | pulse
- * show_widget: bars # none | bars | sparkline
- * widget_hours: 12 # liczba godzin do pokazania (1-48)
- * widget_effect: fill # none | pulse (dla sparkline) | fill (dla bars)
- * alert_buy_above: null
- * alert_sell_below: null
- * click_action: more-info # none | more-info
- * debug: false
- * 
- * SUPER_COMPACT MODE:
- * type: custom:pstryk-card
- * buy_entity: sensor.pstryk_current_buy_price
- * sell_entity: sensor.pstryk_current_sell_price
- * card_mode: super_compact
- * title: Energy Prices # ignorowane w super_compact
- * show_title: false # zawsze false w super_compact
- * show_legend: false # zawsze false w super_compact
- * attribute_config: null # zawsze null w super_compact
- * hover_effect: none # none | lift | glow | shake | pulse
- * show_widget: none # zawsze none w super_compact
- * widget_hours: 12 # ignorowane w super_compact
- * widget_effect: none # ignorowane w super_compact
- * alert_buy_above: 1.0
- * alert_sell_below: 0.1
- * click_action: none # none | more-info
- * debug: false
- * 
- * Changelog v4.1.0:
- * - DODANO opcję widget_effect: fill dla trybu bars
- * - Efekt wypełniania aktualnego słupka w trybie bars jest teraz opcjonalny
- * - widget_effect: none - wyłącza efekt wypełniania (wszystkie słupki jednolite)
- * - widget_effect: fill - włącza efekt wypełniania aktualnego słupka
- * 
- * Changelog v4.0.12:
- * - USUNIĘTO linię zero z widgetu bars (była niewidoczna na dole)
- * - Zachowano linię zero w sparkline (bez zmian)
- * - Zachowano prawidłową obsługę wartości ujemnych w bars
- * - Wartości dodatnie: słupki w górę, ujemne: słupki w dół (od niewidocznej linii zero)
- */
-
 class PstrykCard extends HTMLElement {
   constructor() {
     super();
@@ -83,31 +11,25 @@ class PstrykCard extends HTMLElement {
   }
 
   connectedCallback() {
-    // Uruchom timer odświeżania co godzinę
     this._startRefreshTimer();
   }
 
   disconnectedCallback() {
-    // Zatrzymaj timer przy usuwaniu karty
     this._stopRefreshTimer();
   }
 
   _startRefreshTimer() {
     this._stopRefreshTimer();
     
-    // Odświeżaj co godzinę jeśli widget jest włączony
     if (this._config.show_widget !== 'none') {
-      // Oblicz czas do następnej pełnej godziny
       const now = new Date();
       const msToNextHour = (60 - now.getMinutes()) * 60 * 1000 - now.getSeconds() * 1000 - now.getMilliseconds();
       
-      // Pierwsze odświeżenie na początku następnej godziny
       setTimeout(() => {
         this.render();
-        // Potem odświeżaj co godzinę
         this._refreshInterval = setInterval(() => {
           this.render();
-        }, 3600000); // 60 minut
+        }, 3600000);
       }, msToNextHour);
     }
   }
@@ -124,28 +46,23 @@ class PstrykCard extends HTMLElement {
       throw new Error('You must define buy_entity and sell_entity');
     }
     
-    // Walidacja card_mode
     const validModes = ['full', 'compact', 'super_compact'];
     if (config.card_mode && !validModes.includes(config.card_mode)) {
       throw new Error(`Invalid card_mode: ${config.card_mode}. Use: ${validModes.join(', ')}`);
     }
     
-    // Walidacja show_widget
     const validWidgets = ['none', 'bars', 'sparkline'];
     if (config.show_widget && !validWidgets.includes(config.show_widget)) {
       throw new Error(`Invalid show_widget: ${config.show_widget}. Use: ${validWidgets.join(', ')}`);
     }
     
-    // Walidacja widget_effect
     const validEffects = ['none', 'pulse', 'fill'];
     if (config.widget_effect && !validEffects.includes(config.widget_effect)) {
       throw new Error(`Invalid widget_effect: ${config.widget_effect}. Use: ${validEffects.join(', ')}`);
     }
     
-    // Ustaw domyślny tryb jeśli nie podano
     const cardMode = config.card_mode || 'full';
     
-    // Zastosuj domyślne wartości w zależności od trybu
     this._config = this._applyModeDefaults({
       ...config,
       card_mode: cardMode
@@ -155,7 +72,6 @@ class PstrykCard extends HTMLElement {
   _applyModeDefaults(config) {
     const mode = config.card_mode || 'full';
     
-    // Domyślne wartości dla wszystkich trybów
     const defaults = {
       title: 'Energy Prices',
       show_title: true,
@@ -171,13 +87,11 @@ class PstrykCard extends HTMLElement {
       debug: false
     };
     
-    // Modyfikacje dla trybu compact
     if (mode === 'compact') {
       defaults.show_legend = false;
       defaults.widget_hours = 12;
     }
     
-    // Modyfikacje dla trybu super_compact
     if (mode === 'super_compact') {
       defaults.show_title = false;
       defaults.show_legend = false;
@@ -185,7 +99,6 @@ class PstrykCard extends HTMLElement {
       defaults.show_widget = 'none';
     }
     
-    // Połącz z konfiguracją użytkownika (config ma priorytet)
     return { ...defaults, ...config };
   }
 
@@ -193,7 +106,6 @@ class PstrykCard extends HTMLElement {
     const oldHass = this._hass;
     this._hass = hass;
     
-    // Optymalizacja: renderuj tylko gdy zmienią się wartości encji
     if (oldHass && this._config.buy_entity && this._config.sell_entity) {
       const oldBuy = oldHass.states[this._config.buy_entity];
       const oldSell = oldHass.states[this._config.sell_entity];
@@ -205,7 +117,6 @@ class PstrykCard extends HTMLElement {
       }
     }
     
-    // Czyść cache tłumaczeń przy zmianie języka
     if (oldHass && oldHass.language !== hass.language) {
       this._translations = null;
     }
@@ -282,7 +193,6 @@ class PstrykCard extends HTMLElement {
     const currentPrice = parseFloat(price);
     if (isNaN(currentPrice)) return 'var(--primary-text-color)';
     
-    // Pobierz tablice najlepszych i najgorszych cen
     const bestPrices = entity.attributes['Najlepsze ceny'] || 
                       entity.attributes['Best prices'] || 
                       entity.attributes['best_prices'] || [];
@@ -292,19 +202,17 @@ class PstrykCard extends HTMLElement {
     
     const epsilon = 0.001;
     
-    // Sprawdź w najlepszych
     for (const priceData of bestPrices) {
       const checkPrice = typeof priceData === 'object' ? priceData.price : priceData;
       if (Math.abs(checkPrice - currentPrice) < epsilon) {
-        return '#4ade80'; // Zielony
+        return '#4ade80';
       }
     }
     
-    // Sprawdź w najgorszych
     for (const priceData of worstPrices) {
       const checkPrice = typeof priceData === 'object' ? priceData.price : priceData;
       if (Math.abs(checkPrice - currentPrice) < epsilon) {
-        return '#f87171'; // Czerwony
+        return '#f87171';
       }
     }
     
@@ -369,12 +277,10 @@ class PstrykCard extends HTMLElement {
   generateWidgetData(entity, entityType) {
     if (!entity?.attributes) return { data: [], currentIndex: 0 };
     
-    // Debug
     if (this._config.debug) {
       console.log(`[PstrykCard] ${entityType} generateWidgetData - attributes:`, entity.attributes);
     }
     
-    // Szukaj historii cen w różnych możliwych atrybutach
     let allPrices = entity.attributes['All prices'] || 
                    entity.attributes['all_prices'] || 
                    entity.attributes['prices'] ||
@@ -384,7 +290,6 @@ class PstrykCard extends HTMLElement {
     if (this._config.debug) {
       console.log(`[PstrykCard] ${entityType} raw prices data:`, allPrices);
       console.log(`[PstrykCard] ${entityType} raw data sample:`, allPrices.slice(0, 10).map((item, idx) => `${idx}: ${JSON.stringify(item)}`));
-      // Pokaż problematyczne elementy dla sell
       if (entityType === 'sell') {
         console.log(`[PstrykCard] ${entityType} items 9-16:`, allPrices.slice(9, 17).map((item, idx) => `${idx+9}: ${JSON.stringify(item)}`));
       }
@@ -406,18 +311,15 @@ class PstrykCard extends HTMLElement {
       console.log(`[PstrykCard] ${entityType} current: hour=${currentHour}, minutes=${currentMinutes}, price=${currentPrice}`);
     }
     
-    // Konwertuj do tablicy z informacją o czasie - POPRAWIONE FILTROWANIE
     const pricesWithTime = allPrices.map((item, index) => {
       let price, hour, startTime, rawValue;
       
       if (typeof item === 'object') {
         rawValue = item.price || item.value || item.val || item;
-        // Sprawdź czy to jest zagnieżdżony obiekt z wartościami
         if (typeof rawValue === 'object' && rawValue !== null) {
           rawValue = rawValue.price || rawValue.value || rawValue.val || 0;
         }
         price = parseFloat(rawValue);
-        // Próbuj pobrać informację o czasie z różnych możliwych pól
         if (item.start_time) {
           startTime = new Date(item.start_time);
           hour = startTime.getHours();
@@ -427,7 +329,6 @@ class PstrykCard extends HTMLElement {
         } else if (item.hour !== undefined) {
           hour = parseInt(item.hour);
         } else {
-          // Jeśli nie ma informacji o czasie, zakładamy sekwencyjne godziny
           hour = index % 24;
         }
       } else {
@@ -438,7 +339,6 @@ class PstrykCard extends HTMLElement {
       
       return { price, hour, index, originalIndex: index, rawValue };
     }).filter(item => {
-      // LEPSZE FILTROWANIE: sprawdź czy wartość da się przekonwertować na liczbę
       const isValid = !isNaN(item.price) && isFinite(item.price) && item.rawValue !== null && item.rawValue !== undefined && item.rawValue !== '';
       
       if (this._config.debug && !isValid) {
@@ -452,23 +352,19 @@ class PstrykCard extends HTMLElement {
       console.log(`[PstrykCard] ${entityType} processed prices:`, pricesWithTime.map(p => `${p.hour}:00 = ${p.price}`));
     }
     
-    // Sprawdź kolejność godzin w danych
     if (this._config.debug && pricesWithTime.length > 1) {
       const hourSequence = pricesWithTime.slice(0, 5).map(p => p.hour);
       console.log(`[PstrykCard] ${entityType} first 5 hours sequence:`, hourSequence);
     }
     
-    // Znajdź indeks aktualnej godziny
     let currentIndex = -1;
     
-    // Metoda 1: Szukaj dokładnego dopasowania godziny
     currentIndex = pricesWithTime.findIndex(item => item.hour === currentHour);
     
     if (currentIndex !== -1 && this._config.debug) {
       console.log(`[PstrykCard] ${entityType} found current hour ${currentHour} at index ${currentIndex}`);
     }
     
-    // Metoda 2: Jeśli nie znaleziono, szukaj po cenie (z tolerancją)
     if (currentIndex === -1) {
       const epsilon = 0.01;
       currentIndex = pricesWithTime.findIndex(item => Math.abs(item.price - currentPrice) < epsilon);
@@ -478,9 +374,7 @@ class PstrykCard extends HTMLElement {
       }
     }
     
-    // Metoda 3: Jeśli nadal nie znaleziono i mamy pełne 24h danych
     if (currentIndex === -1 && pricesWithTime.length >= 24) {
-      // Spróbuj znaleźć najbliższą godzinę
       let minDiff = 24;
       pricesWithTime.forEach((item, idx) => {
         const diff = Math.abs(item.hour - currentHour);
@@ -495,7 +389,6 @@ class PstrykCard extends HTMLElement {
       }
     }
     
-    // Ostatnia deska ratunku - użyj środka
     if (currentIndex === -1) {
       currentIndex = Math.floor(pricesWithTime.length / 2);
       if (this._config.debug) {
@@ -503,11 +396,9 @@ class PstrykCard extends HTMLElement {
       }
     }
     
-    // Pobierz dane tylko dla przyszłych godzin (od aktualnej)
     const hoursToShow = Math.min(this._config.widget_hours || 24, pricesWithTime.length - currentIndex);
     const futureData = pricesWithTime.slice(currentIndex, currentIndex + hoursToShow);
     
-    // Oblicz pozycję kropki (0-1) w aktualnej godzinie
     const dotPosition = currentMinutes / 60;
     
     if (this._config.debug) {
@@ -517,7 +408,7 @@ class PstrykCard extends HTMLElement {
     return { 
       data: futureData.map(d => d.price),
       hours: futureData.map(d => d.hour),
-      currentIndex: 0, // Zawsze 0, bo zaczynamy od aktualnej
+      currentIndex: 0,
       dotPosition: dotPosition
     };
   }
@@ -528,7 +419,6 @@ class PstrykCard extends HTMLElement {
     const min = Math.min(...data);
     const max = Math.max(...data);
     
-    // Zawsze uwzględnij 0 w zakresie
     const displayMin = Math.min(min, 0);
     const displayMax = Math.max(max, 0);
     const range = displayMax - displayMin || 1;
@@ -540,10 +430,8 @@ class PstrykCard extends HTMLElement {
     const chartWidth = viewBoxWidth - (paddingX * 2);
     const chartHeight = viewBoxHeight - (paddingY * 2);
     
-    // Oblicz pozycję linii zero - zawsze będzie widoczna
     const zeroY = paddingY + chartHeight - ((0 - displayMin) / range) * chartHeight;
     
-    // Generuj punkty dla linii
     const points = data.map((value, index) => {
       const x = paddingX + (index / (data.length - 1)) * chartWidth;
       const y = paddingY + chartHeight - ((value - displayMin) / range) * chartHeight;
@@ -553,19 +441,15 @@ class PstrykCard extends HTMLElement {
     let currentDot = '';
     let pulseEffect = '';
     
-    // Kropka na aktualnej pozycji
     if (currentIndex === 0 && data.length > 0) {
-      // Pozycja X między pierwszym a drugim punktem
       const x1 = paddingX;
       const x2 = data.length > 1 ? paddingX + (1 / (data.length - 1)) * chartWidth : x1;
       const currentX = x1 + (x2 - x1) * dotPosition;
       
-      // Pozycja Y - interpolacja między wartościami
       const y1 = paddingY + chartHeight - ((data[0] - displayMin) / range) * chartHeight;
       const y2 = data.length > 1 ? paddingY + chartHeight - ((data[1] - displayMin) / range) * chartHeight : y1;
       const currentY = y1 + (y2 - y1) * dotPosition;
       
-      // Efekt pulsowania
       if (this._config.widget_effect === 'pulse') {
         pulseEffect = `
           <circle cx="${currentX}" cy="${currentY}" r="8" fill="${color}" opacity="0.3">
@@ -581,7 +465,6 @@ class PstrykCard extends HTMLElement {
       `;
     }
     
-    // Linia zero - zawsze widoczna z lepszym kolorem
     const zeroLine = `
       <line
         x1="${paddingX}"
@@ -595,7 +478,6 @@ class PstrykCard extends HTMLElement {
       />
     `;
     
-    // Debug info
     if (this._config.debug) {
       console.log(`[PstrykCard] Sparkline ${uniqueId}: data=[${data.join(', ')}]`);
       console.log(`[PstrykCard] Sparkline ${uniqueId}: min=${min}, max=${max}, displayMin=${displayMin}, displayMax=${displayMax}, zeroY=${zeroY}`);
@@ -633,10 +515,8 @@ class PstrykCard extends HTMLElement {
     const max = Math.max(...prices, 0);
     const range = max - min || 0.01;
     
-    // Pozycja "linii zero" (środka) bez rysowania linii
     const zeroY = paddingY + chartHeight - ((0 - min) / range) * chartHeight;
     
-    // Szerokość pojedynczego słupka
     const barWidth = Math.max(chartWidth / data.length * 0.8, 2);
     const barGap = chartWidth / data.length * 0.2;
     
@@ -648,24 +528,18 @@ class PstrykCard extends HTMLElement {
       const x = paddingX + index * (barWidth + barGap);
       let barHeight, y;
       
-      // POPRAWNA LOGIKA: Słupki rosną od linii zero (bez rysowania linii)
       if (price >= 0) {
-        // Wartość dodatnia - słupek w górę od linii zero
         barHeight = ((price - 0) / range) * chartHeight;
         y = zeroY - barHeight;
       } else {
-        // Wartość ujemna - słupek w dół od linii zero  
         barHeight = ((0 - price) / range) * chartHeight;
         y = zeroY;
       }
       
-      // Upewnij się, że słupek ma minimalną wysokość dla widoczności
       barHeight = Math.max(Math.abs(barHeight), 1);
       
-      // Określ przeźroczystość
       let opacity = '0.3';
       
-      // Pierwszy słupek (aktualna godzina) - tylko jeśli widget_effect === 'fill'
       if (index === 0 && this._config.widget_effect === 'fill') {
         opacity = '1';
         const filledHeight = barHeight * dotPosition;
@@ -673,11 +547,9 @@ class PstrykCard extends HTMLElement {
         
         let filledY, filledBarHeight;
         if (price >= 0) {
-          // Dodatnia wartość - wypełnienie od dołu słupka w górę
           filledY = y + unfilledHeight;
           filledBarHeight = filledHeight;
         } else {
-          // Ujemna wartość - wypełnienie od góry słupka w dół
           filledY = y;
           filledBarHeight = filledHeight;
         }
@@ -714,7 +586,6 @@ class PstrykCard extends HTMLElement {
         `;
       }
       
-      // Jeśli to pierwszy słupek i efekt fill jest włączony, to dodaj etykietę z godziną
       if (index === 0 && this._config.widget_effect === 'fill') {
         return `
           <rect
@@ -739,7 +610,6 @@ class PstrykCard extends HTMLElement {
         `;
       }
       
-      // Zwykły słupek
       return `
         <rect
           x="${x}"
@@ -896,7 +766,6 @@ class PstrykCard extends HTMLElement {
     const buyColor = this.getPriceColor(buyEntity, buyPrice, 'buy');
     const sellColor = this.getPriceColor(sellEntity, sellPrice, 'sell');
     
-    // Reset godzin przed pobraniem nowych wartości
     this._remainingHours = null;
     
     const buyAttribute = this._config.attribute_config ? 
@@ -905,7 +774,6 @@ class PstrykCard extends HTMLElement {
       this.getAttributeValue(sellEntity, this._config.attribute_config) : null;
     const attributeLabel = this.getAttributeLabel(this._config.attribute_config);
 
-    // Generuj widgety
     let buyWidgetHtml = '';
     let sellWidgetHtml = '';
     if (this._config.show_widget !== 'none' && !isSuperCompact) {
@@ -979,10 +847,8 @@ class PstrykCard extends HTMLElement {
       }
     }
 
-    // Restart timer jeśli potrzebny
     this._startRefreshTimer();
 
-    // Generowanie HTML elementów
     const titleHtml = this._config.show_title && !isSuperCompact ? 
       `<div class="header">${this._config.title}</div>` : '';
     
@@ -1012,7 +878,6 @@ class PstrykCard extends HTMLElement {
       </div>
     ` : '';
 
-    // Style specyficzne dla trybu super_compact
     const superCompactStyles = isSuperCompact ? `
       .prices-container {
         grid-template-columns: 1fr 1fr;
@@ -1206,7 +1071,6 @@ class PstrykCard extends HTMLElement {
       </ha-card>
     `;
 
-    // Dodaj event listenery po renderowaniu
     if (this._config.click_action !== 'none') {
       this.shadowRoot.querySelectorAll('.price-box').forEach((box, index) => {
         const entityId = index === 0 ? this._config.buy_entity : this._config.sell_entity;
@@ -1216,10 +1080,8 @@ class PstrykCard extends HTMLElement {
   }
 }
 
-// Rejestracja karty
 customElements.define('pstryk-card', PstrykCard);
 
-// Dodaj do okna dla łatwego debugowania
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'pstryk-card',
