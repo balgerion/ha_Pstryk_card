@@ -6,39 +6,7 @@ class PstrykCard extends HTMLElement {
     this._hass = null;
     this._remainingHours = null;
     this._translations = null;
-    this._avgPriceRegex = null;
-    this._refreshInterval = null;
-  }
-
-  connectedCallback() {
-    this._startRefreshTimer();
-  }
-
-  disconnectedCallback() {
-    this._stopRefreshTimer();
-  }
-
-  _startRefreshTimer() {
-    this._stopRefreshTimer();
-    
-    if (this._config.show_widget !== 'none') {
-      const now = new Date();
-      const msToNextHour = (60 - now.getMinutes()) * 60 * 1000 - now.getSeconds() * 1000 - now.getMilliseconds();
-      
-      setTimeout(() => {
-        this.render();
-        this._refreshInterval = setInterval(() => {
-          this.render();
-        }, 3600000);
-      }, msToNextHour);
-    }
-  }
-
-  _stopRefreshTimer() {
-    if (this._refreshInterval) {
-      clearInterval(this._refreshInterval);
-      this._refreshInterval = null;
-    }
+    this._isPolish = false;
   }
 
   setConfig(config) {
@@ -83,8 +51,7 @@ class PstrykCard extends HTMLElement {
       widget_effect: 'none',
       alert_buy_above: null,
       alert_sell_below: null,
-      click_action: 'none',
-      debug: false
+      click_action: 'none'
     };
     
     if (mode === 'compact') {
@@ -148,10 +115,11 @@ class PstrykCard extends HTMLElement {
 
   _getTranslations() {
     if (!this._translations) {
-      const isPolish = this._hass?.language === 'pl' || 
+      const isPolish = this._hass?.language === 'pl' ||
                       (this._hass?.locale?.language === 'pl') ||
                       (navigator.language?.startsWith('pl'));
-      
+      this._isPolish = isPolish;
+
       this._translations = {
         'buy_price': isPolish ? 'Cena Zakupu' : 'Buy Price',
         'sell_price': isPolish ? 'Cena Sprzedaży' : 'Sell Price',
@@ -187,35 +155,17 @@ class PstrykCard extends HTMLElement {
     return false;
   }
 
-  getPriceColor(entity, price, type) {
+  getPriceColor(entity, price) {
     if (!entity?.attributes) return 'var(--primary-text-color)';
     
     const currentPrice = parseFloat(price);
     if (isNaN(currentPrice)) return 'var(--primary-text-color)';
     
-    const bestPrices = entity.attributes['Najlepsze ceny'] || 
-                      entity.attributes['Best prices'] || 
-                      entity.attributes['best_prices'] || [];
-    const worstPrices = entity.attributes['Najgorsze ceny'] || 
-                       entity.attributes['Worst prices'] || 
-                       entity.attributes['worst_prices'] || [];
-    
     const epsilon = 0.001;
-    
-    for (const priceData of bestPrices) {
-      const checkPrice = typeof priceData === 'object' ? priceData.price : priceData;
-      if (Math.abs(checkPrice - currentPrice) < epsilon) {
-        return '#4ade80';
-      }
-    }
-    
-    for (const priceData of worstPrices) {
-      const checkPrice = typeof priceData === 'object' ? priceData.price : priceData;
-      if (Math.abs(checkPrice - currentPrice) < epsilon) {
-        return '#f87171';
-      }
-    }
-    
+    const matches = (list) => (list || []).some(p => Math.abs((typeof p === 'object' ? p.price : p) - currentPrice) < epsilon);
+
+    if (matches(entity.attributes['Best prices'])) return '#4ade80';
+    if (matches(entity.attributes['Worst prices'])) return '#f87171';
     return 'var(--primary-text-color)';
   }
 
@@ -234,12 +184,8 @@ class PstrykCard extends HTMLElement {
         return entity.attributes['Next hour'];
                
       case 'average_remaining':
-        if (!this._avgPriceRegex) {
-          this._avgPriceRegex = /Average price today \/(\d+)/;
-        }
-        
         for (const [key, value] of Object.entries(entity.attributes)) {
-          const match = key.match(this._avgPriceRegex);
+          const match = key.match(/Average price today \/(\d+)/);
           if (match && match[1] !== '24') {
             this._remainingHours = match[1];
             return value;
@@ -261,10 +207,9 @@ class PstrykCard extends HTMLElement {
         return this.translate('next_hour');
         
       case 'average_remaining':
+        this._getTranslations();
         const hours = this._remainingHours || 'X';
-        const translations = this._getTranslations();
-        const isPolish = translations['buy_price'] === 'Cena Zakupu';
-        return isPolish ? `Średnia ${hours}h` : `Average ${hours}h`;
+        return this._isPolish ? `Średnia ${hours}h` : `Average ${hours}h`;
         
       case 'average_24':
         return this.translate('average_24');
@@ -274,146 +219,34 @@ class PstrykCard extends HTMLElement {
     }
   }
 
-  generateWidgetData(entity, entityType) {
-    if (!entity?.attributes) return { data: [], currentIndex: 0 };
-    
-    if (this._config.debug) {
-      console.log(`[PstrykCard] ${entityType} generateWidgetData - attributes:`, entity.attributes);
-    }
-    
-    let allPrices = entity.attributes['All prices'] || 
-                   entity.attributes['all_prices'] || 
-                   entity.attributes['prices'] ||
-                   entity.attributes['hourly_prices'] ||
-                   [];
-    
-    if (this._config.debug) {
-      console.log(`[PstrykCard] ${entityType} raw prices data:`, allPrices);
-      console.log(`[PstrykCard] ${entityType} raw data sample:`, allPrices.slice(0, 10).map((item, idx) => `${idx}: ${JSON.stringify(item)}`));
-      if (entityType === 'sell') {
-        console.log(`[PstrykCard] ${entityType} items 9-16:`, allPrices.slice(9, 17).map((item, idx) => `${idx+9}: ${JSON.stringify(item)}`));
-      }
-    }
-    
+  generateWidgetData(entity) {
+    const allPrices = entity?.attributes?.['All prices'];
     if (!Array.isArray(allPrices) || allPrices.length === 0) {
-      if (this._config.debug) {
-        console.warn(`[PstrykCard] No price data found for ${entityType}`);
-      }
-      return { data: [], currentIndex: 0 };
+      return { data: [], hours: [], dotPosition: 0 };
     }
-    
+
     const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinutes = now.getMinutes();
-    const currentPrice = parseFloat(entity.state);
-    
-    if (this._config.debug) {
-      console.log(`[PstrykCard] ${entityType} current: hour=${currentHour}, minutes=${currentMinutes}, price=${currentPrice}`);
-    }
-    
-    const pricesWithTime = allPrices.map((item, index) => {
-      let price, hour, startTime, rawValue;
-      
-      if (typeof item === 'object') {
-        rawValue = item.price || item.value || item.val || item;
-        if (typeof rawValue === 'object' && rawValue !== null) {
-          rawValue = rawValue.price || rawValue.value || rawValue.val || 0;
-        }
-        price = parseFloat(rawValue);
-        if (item.start_time) {
-          startTime = new Date(item.start_time);
-          hour = startTime.getHours();
-        } else if (item.time) {
-          startTime = new Date(item.time);
-          hour = startTime.getHours();
-        } else if (item.hour !== undefined) {
-          hour = parseInt(item.hour);
-        } else {
-          hour = index % 24;
-        }
-      } else {
-        rawValue = item;
-        price = parseFloat(item);
-        hour = index % 24;
-      }
-      
-      return { price, hour, index, originalIndex: index, rawValue };
-    }).filter(item => {
-      const isValid = !isNaN(item.price) && isFinite(item.price) && item.rawValue !== null && item.rawValue !== undefined && item.rawValue !== '';
-      
-      if (this._config.debug && !isValid) {
-        console.log(`[PstrykCard] ${entityType} filtered out:`, JSON.stringify(item.rawValue), 'at index', item.originalIndex, 'parsed as:', item.price);
-      }
-      
-      return isValid;
-    });
-    
-    if (this._config.debug) {
-      console.log(`[PstrykCard] ${entityType} processed prices:`, pricesWithTime.map(p => `${p.hour}:00 = ${p.price}`));
-    }
-    
-    if (this._config.debug && pricesWithTime.length > 1) {
-      const hourSequence = pricesWithTime.slice(0, 5).map(p => p.hour);
-      console.log(`[PstrykCard] ${entityType} first 5 hours sequence:`, hourSequence);
-    }
-    
-    let currentIndex = -1;
-    
-    currentIndex = pricesWithTime.findIndex(item => item.hour === currentHour);
-    
-    if (currentIndex !== -1 && this._config.debug) {
-      console.log(`[PstrykCard] ${entityType} found current hour ${currentHour} at index ${currentIndex}`);
-    }
-    
-    if (currentIndex === -1) {
-      const epsilon = 0.01;
-      currentIndex = pricesWithTime.findIndex(item => Math.abs(item.price - currentPrice) < epsilon);
-      
-      if (currentIndex !== -1 && this._config.debug) {
-        console.log(`[PstrykCard] ${entityType} found current by price match at index ${currentIndex}, hour: ${pricesWithTime[currentIndex].hour}`);
-      }
-    }
-    
-    if (currentIndex === -1 && pricesWithTime.length >= 24) {
-      let minDiff = 24;
-      pricesWithTime.forEach((item, idx) => {
-        const diff = Math.abs(item.hour - currentHour);
-        if (diff < minDiff) {
-          minDiff = diff;
-          currentIndex = idx;
-        }
-      });
-      
-      if (currentIndex !== -1 && this._config.debug) {
-        console.log(`[PstrykCard] ${entityType} using closest hour at index ${currentIndex}, hour: ${pricesWithTime[currentIndex].hour}`);
-      }
-    }
-    
-    if (currentIndex === -1) {
-      currentIndex = Math.floor(pricesWithTime.length / 2);
-      if (this._config.debug) {
-        console.warn(`[PstrykCard] ${entityType} could not find current hour, using middle at index ${currentIndex}`);
-      }
-    }
-    
+    const pricesWithTime = allPrices
+      .map(item => ({
+        price: parseFloat(item?.price),
+        hour: item?.start ? new Date(item.start).getHours() : NaN
+      }))
+      .filter(item => isFinite(item.price) && isFinite(item.hour));
+
+    let currentIndex = pricesWithTime.findIndex(item => item.hour === now.getHours());
+    if (currentIndex === -1) currentIndex = 0;
+
     const hoursToShow = Math.min(this._config.widget_hours || 24, pricesWithTime.length - currentIndex);
     const futureData = pricesWithTime.slice(currentIndex, currentIndex + hoursToShow);
-    
-    const dotPosition = currentMinutes / 60;
-    
-    if (this._config.debug) {
-      console.log(`[PstrykCard] ${entityType} showing hours:`, futureData.map(d => `${d.hour}:00 = ${d.price}`).join(', '));
-    }
-    
-    return { 
+
+    return {
       data: futureData.map(d => d.price),
       hours: futureData.map(d => d.hour),
-      currentIndex: 0,
-      dotPosition: dotPosition
+      dotPosition: now.getMinutes() / 60
     };
   }
 
-  createSparkline(data, hours, height, color, currentIndex, dotPosition, uniqueId) {
+  createSparkline(data, height, color, dotPosition) {
     if (!data || data.length < 2) return '';
     
     const min = Math.min(...data);
@@ -438,32 +271,28 @@ class PstrykCard extends HTMLElement {
       return `${x},${y}`;
     }).join(' ');
     
-    let currentDot = '';
+    const x1 = paddingX;
+    const x2 = paddingX + (1 / (data.length - 1)) * chartWidth;
+    const currentX = x1 + (x2 - x1) * dotPosition;
+
+    const y1 = paddingY + chartHeight - ((data[0] - displayMin) / range) * chartHeight;
+    const y2 = paddingY + chartHeight - ((data[1] - displayMin) / range) * chartHeight;
+    const currentY = y1 + (y2 - y1) * dotPosition;
+
     let pulseEffect = '';
-    
-    if (currentIndex === 0 && data.length > 0) {
-      const x1 = paddingX;
-      const x2 = data.length > 1 ? paddingX + (1 / (data.length - 1)) * chartWidth : x1;
-      const currentX = x1 + (x2 - x1) * dotPosition;
-      
-      const y1 = paddingY + chartHeight - ((data[0] - displayMin) / range) * chartHeight;
-      const y2 = data.length > 1 ? paddingY + chartHeight - ((data[1] - displayMin) / range) * chartHeight : y1;
-      const currentY = y1 + (y2 - y1) * dotPosition;
-      
-      if (this._config.widget_effect === 'pulse') {
-        pulseEffect = `
-          <circle cx="${currentX}" cy="${currentY}" r="8" fill="${color}" opacity="0.3">
-            <animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite"/>
-            <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2s" repeatCount="indefinite"/>
-          </circle>
-        `;
-      }
-      
-      currentDot = `
-        ${pulseEffect}
-        <circle cx="${currentX}" cy="${currentY}" r="4" fill="${color}" opacity="1"/>
+    if (this._config.widget_effect === 'pulse') {
+      pulseEffect = `
+        <circle cx="${currentX}" cy="${currentY}" r="8" fill="${color}" opacity="0.3">
+          <animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2s" repeatCount="indefinite"/>
+        </circle>
       `;
     }
+
+    const currentDot = `
+      ${pulseEffect}
+      <circle cx="${currentX}" cy="${currentY}" r="4" fill="${color}" opacity="1"/>
+    `;
     
     const zeroLine = `
       <line
@@ -478,13 +307,8 @@ class PstrykCard extends HTMLElement {
       />
     `;
     
-    if (this._config.debug) {
-      console.log(`[PstrykCard] Sparkline ${uniqueId}: data=[${data.join(', ')}]`);
-      console.log(`[PstrykCard] Sparkline ${uniqueId}: min=${min}, max=${max}, displayMin=${displayMin}, displayMax=${displayMax}, zeroY=${zeroY}`);
-    }
-    
     return `
-      <svg viewBox="0 0 ${viewBoxWidth} ${viewBoxHeight}" preserveAspectRatio="xMidYMid meet" 
+      <svg viewBox="0 0 ${viewBoxWidth} ${viewBoxHeight}" preserveAspectRatio="xMidYMid meet"
            style="width: 100%; height: ${height}px; display: block; margin-top: 8px;">
         ${zeroLine}
         <polyline
@@ -500,7 +324,7 @@ class PstrykCard extends HTMLElement {
     `;
   }
 
-  createBars(data, hours, height, color, currentIndex, dotPosition, type) {
+  createBars(data, hours, height, color, dotPosition) {
     if (!data || data.length < 1) return '';
     
     const viewBoxWidth = 200;
@@ -510,20 +334,15 @@ class PstrykCard extends HTMLElement {
     const chartWidth = viewBoxWidth - (paddingX * 2);
     const chartHeight = viewBoxHeight - (paddingY * 2);
     
-    const prices = data;
-    const min = Math.min(...prices, 0);
-    const max = Math.max(...prices, 0);
+    const min = Math.min(...data, 0);
+    const max = Math.max(...data, 0);
     const range = max - min || 0.01;
-    
+
     const zeroY = paddingY + chartHeight - ((0 - min) / range) * chartHeight;
-    
+
     const barWidth = Math.max(chartWidth / data.length * 0.8, 2);
     const barGap = chartWidth / data.length * 0.2;
-    
-    if (this._config.debug) {
-      console.log(`[PstrykCard] Bars ${type}: data=[${data.join(', ')}], min=${min}, max=${max}, zeroY=${zeroY}, chartHeight=${chartHeight}`);
-    }
-    
+
     const bars = data.map((price, index) => {
       const x = paddingX + index * (barWidth + barGap);
       let barHeight, y;
@@ -537,23 +356,11 @@ class PstrykCard extends HTMLElement {
       }
       
       barHeight = Math.max(Math.abs(barHeight), 1);
-      
-      let opacity = '0.3';
-      
+
       if (index === 0 && this._config.widget_effect === 'fill') {
-        opacity = '1';
         const filledHeight = barHeight * dotPosition;
-        const unfilledHeight = barHeight - filledHeight;
-        
-        let filledY, filledBarHeight;
-        if (price >= 0) {
-          filledY = y + unfilledHeight;
-          filledBarHeight = filledHeight;
-        } else {
-          filledY = y;
-          filledBarHeight = filledHeight;
-        }
-        
+        const filledY = price >= 0 ? y + (barHeight - filledHeight) : y;
+
         return `
           <rect
             x="${x}"
@@ -568,7 +375,7 @@ class PstrykCard extends HTMLElement {
             x="${x}"
             y="${filledY}"
             width="${barWidth}"
-            height="${filledBarHeight}"
+            height="${filledHeight}"
             fill="${color}"
             opacity="1"
             rx="1"
@@ -585,31 +392,7 @@ class PstrykCard extends HTMLElement {
           </text>
         `;
       }
-      
-      if (index === 0 && this._config.widget_effect === 'fill') {
-        return `
-          <rect
-            x="${x}"
-            y="${y}"
-            width="${barWidth}"
-            height="${barHeight}"
-            fill="${color}"
-            opacity="${opacity}"
-            rx="1"
-          />
-          <text
-            x="${x + barWidth / 2}"
-            y="${price >= 0 ? y - 3 : y + barHeight + 12}"
-            text-anchor="middle"
-            font-size="9"
-            fill="${color}"
-            font-weight="bold"
-          >
-            ${hours[index]}:00
-          </text>
-        `;
-      }
-      
+
       return `
         <rect
           x="${x}"
@@ -617,7 +400,7 @@ class PstrykCard extends HTMLElement {
           width="${barWidth}"
           height="${barHeight}"
           fill="${color}"
-          opacity="${opacity}"
+          opacity="0.3"
           rx="1"
         />
       `;
@@ -763,8 +546,8 @@ class PstrykCard extends HTMLElement {
     const sellPrice = sellEntity.state;
     const buyAlert = this.checkAlert('buy', buyPrice);
     const sellAlert = this.checkAlert('sell', sellPrice);
-    const buyColor = this.getPriceColor(buyEntity, buyPrice, 'buy');
-    const sellColor = this.getPriceColor(sellEntity, sellPrice, 'sell');
+    const buyColor = this.getPriceColor(buyEntity, buyPrice);
+    const sellColor = this.getPriceColor(sellEntity, sellPrice);
     
     this._remainingHours = null;
     
@@ -777,77 +560,31 @@ class PstrykCard extends HTMLElement {
     let buyWidgetHtml = '';
     let sellWidgetHtml = '';
     if (this._config.show_widget !== 'none' && !isSuperCompact) {
-      const buyData = this.generateWidgetData(buyEntity, 'buy');
-      const sellData = this.generateWidgetData(sellEntity, 'sell');
-      
-      if (this._config.debug) {
-        console.log('[PstrykCard] Buy widget data:', buyData);
-        console.log('[PstrykCard] Sell widget data:', sellData);
-      }
-      
+      const buyData = this.generateWidgetData(buyEntity);
+      const sellData = this.generateWidgetData(sellEntity);
+
+      const noData = (label) => `
+        <div style="font-size: 11px; color: var(--secondary-text-color); margin-top: 8px; text-align: center;">
+          ${this.translate('no_data')} (${label})
+        </div>
+      `;
+
       if (this._config.show_widget === 'sparkline') {
         if (buyData.data.length > 1) {
-          buyWidgetHtml = this.createSparkline(
-            buyData.data,
-            buyData.hours,
-            styles.widget.height,
-            buyColor,
-            buyData.currentIndex,
-            buyData.dotPosition,
-            'buy-sparkline'
-          );
+          buyWidgetHtml = this.createSparkline(buyData.data, styles.widget.height, buyColor, buyData.dotPosition);
         }
         if (sellData.data.length > 1) {
-          sellWidgetHtml = this.createSparkline(
-            sellData.data,
-            sellData.hours,
-            styles.widget.height,
-            sellColor,
-            sellData.currentIndex,
-            sellData.dotPosition,
-            'sell-sparkline'
-          );
+          sellWidgetHtml = this.createSparkline(sellData.data, styles.widget.height, sellColor, sellData.dotPosition);
         }
       } else if (this._config.show_widget === 'bars') {
-        if (buyData.data.length > 0) {
-          buyWidgetHtml = this.createBars(
-            buyData.data,
-            buyData.hours,
-            styles.widget.height,
-            buyColor,
-            buyData.currentIndex,
-            buyData.dotPosition,
-            'buy'
-          );
-        } else {
-          buyWidgetHtml = `
-            <div style="font-size: 11px; color: var(--secondary-text-color); margin-top: 8px; text-align: center;">
-              ${this.translate('no_data')} (Buy)
-            </div>
-          `;
-        }
-        
-        if (sellData.data.length > 0) {
-          sellWidgetHtml = this.createBars(
-            sellData.data,
-            sellData.hours,
-            styles.widget.height,
-            sellColor,
-            sellData.currentIndex,
-            sellData.dotPosition,
-            'sell'
-          );
-        } else {
-          sellWidgetHtml = `
-            <div style="font-size: 11px; color: var(--secondary-text-color); margin-top: 8px; text-align: center;">
-              ${this.translate('no_data')} (Sell)
-            </div>
-          `;
-        }
+        buyWidgetHtml = buyData.data.length > 0 ?
+          this.createBars(buyData.data, buyData.hours, styles.widget.height, buyColor, buyData.dotPosition) :
+          noData('Buy');
+        sellWidgetHtml = sellData.data.length > 0 ?
+          this.createBars(sellData.data, sellData.hours, styles.widget.height, sellColor, sellData.dotPosition) :
+          noData('Sell');
       }
     }
-
-    this._startRefreshTimer();
 
     const titleHtml = this._config.show_title && !isSuperCompact ? 
       `<div class="header">${this._config.title}</div>` : '';
