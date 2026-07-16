@@ -244,7 +244,7 @@ class PstrykCard extends HTMLElement {
     };
   }
 
-  createSparkline(data, height, color, dotPosition) {
+  createSparkline(data, hours, height, color, dotPosition) {
     if (!data || data.length < 2) return '';
     
     const displayMin = Math.min(...data, 0);
@@ -312,6 +312,13 @@ class PstrykCard extends HTMLElement {
       <text x="${paddingX}" y="${minLabelY}" font-size="6" fill="#888888" opacity="0.9">${dataMin.toFixed(2)}</text>
     `;
 
+    const step = chartWidth / (data.length - 1);
+    const hoverStrips = data.map((price, index) => {
+      const left = Math.max(paddingX, paddingX + (index - 0.5) * step);
+      const right = Math.min(paddingX + chartWidth, paddingX + (index + 0.5) * step);
+      return `<rect x="${left}" y="0" width="${right - left}" height="${viewBoxHeight}" fill="transparent"><title>${hours[index]}:00 - ${price.toFixed(2)} PLN/kWh</title></rect>`;
+    }).join('');
+
     return `
       <svg viewBox="0 0 ${viewBoxWidth} ${viewBoxHeight}" preserveAspectRatio="xMidYMid meet"
            style="width: 100%; height: ${height}px; display: block; margin-top: 8px;">
@@ -326,6 +333,7 @@ class PstrykCard extends HTMLElement {
           vector-effect="non-scaling-stroke"
         />
         ${currentDot}
+        ${hoverStrips}
       </svg>
     `;
   }
@@ -580,10 +588,10 @@ class PstrykCard extends HTMLElement {
 
       if (this._config.show_widget === 'sparkline') {
         if (buyData.data.length > 1) {
-          buyWidgetHtml = this.createSparkline(buyData.data, styles.widget.height, buyColor, buyData.dotPosition);
+          buyWidgetHtml = this.createSparkline(buyData.data, buyData.hours, styles.widget.height, buyColor, buyData.dotPosition);
         }
         if (sellData.data.length > 1) {
-          sellWidgetHtml = this.createSparkline(sellData.data, styles.widget.height, sellColor, sellData.dotPosition);
+          sellWidgetHtml = this.createSparkline(sellData.data, sellData.hours, styles.widget.height, sellColor, sellData.dotPosition);
         }
       } else if (this._config.show_widget === 'bars') {
         buyWidgetHtml = buyData.data.length > 0 ?
