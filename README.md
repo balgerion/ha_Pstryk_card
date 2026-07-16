@@ -1,6 +1,6 @@
 # Pstryk Energy Card dla Home Assistant
 
-![Version](https://img.shields.io/badge/version-4.2.0-blue.svg) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-4.2.1-blue.svg) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ---
 
