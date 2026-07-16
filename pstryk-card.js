@@ -45,6 +45,7 @@ class PstrykCard extends HTMLElement {
       show_widget: 'none',
       widget_hours: 24,
       widget_effect: 'none',
+      show_price_status: false,
       alert_buy_above: null,
       alert_sell_below: null,
       click_action: 'none'
@@ -125,6 +126,9 @@ class PstrykCard extends HTMLElement {
         'next_hour': isPolish ? 'Następna godzina' : 'Next hour',
         'average_24': isPolish ? 'Średnia 24h' : 'Average 24h',
         'alert': isPolish ? 'Uwaga!' : 'Alert!',
+        'cheap': isPolish ? 'Tanio' : 'Cheap',
+        'expensive': isPolish ? 'Drogo' : 'Expensive',
+        'cached_data': isPolish ? 'Dane z cache' : 'Cached data',
         'no_data': isPolish ? 'Brak danych' : 'No data',
         'entity_not_found': isPolish ? 'Nie znaleziono encji' : 'Entity not found'
       };
@@ -297,11 +301,22 @@ class PstrykCard extends HTMLElement {
         opacity="0.9"
       />
     `;
-    
+
+    const dataMin = Math.min(...data);
+    const dataMax = Math.max(...data);
+    const yFor = (v) => paddingY + chartHeight - ((v - displayMin) / range) * chartHeight;
+    const maxLabelY = Math.max(yFor(dataMax) - 2, 6);
+    const minLabelY = Math.min(yFor(dataMin) + 7, viewBoxHeight - 1);
+    const minMaxLabels = `
+      <text x="${paddingX}" y="${maxLabelY}" font-size="6" fill="#888888" opacity="0.9">${dataMax.toFixed(2)}</text>
+      <text x="${paddingX}" y="${minLabelY}" font-size="6" fill="#888888" opacity="0.9">${dataMin.toFixed(2)}</text>
+    `;
+
     return `
       <svg viewBox="0 0 ${viewBoxWidth} ${viewBoxHeight}" preserveAspectRatio="xMidYMid meet"
            style="width: 100%; height: ${height}px; display: block; margin-top: 8px;">
         ${zeroLine}
+        ${minMaxLabels}
         <polyline
           points="${points}"
           fill="none"
@@ -348,39 +363,44 @@ class PstrykCard extends HTMLElement {
 
       barHeight = Math.max(barHeight, 1);
 
+      const tooltip = `<title>${hours[index]}:00 - ${price.toFixed(2)} PLN/kWh</title>`;
+
       if (index === 0 && this._config.widget_effect === 'fill') {
         const filledHeight = barHeight * dotPosition;
         const filledY = price >= 0 ? y + (barHeight - filledHeight) : y;
 
         return `
-          <rect
-            x="${x}"
-            y="${y}"
-            width="${barWidth}"
-            height="${barHeight}"
-            fill="${color}"
-            opacity="0.3"
-            rx="1"
-          />
-          <rect
-            x="${x}"
-            y="${filledY}"
-            width="${barWidth}"
-            height="${filledHeight}"
-            fill="${color}"
-            opacity="1"
-            rx="1"
-          />
-          <text
-            x="${x + barWidth / 2}"
-            y="${price >= 0 ? y - 3 : y + barHeight + 12}"
-            text-anchor="middle"
-            font-size="9"
-            fill="${color}"
-            font-weight="bold"
-          >
-            ${hours[index]}:00
-          </text>
+          <g>
+            ${tooltip}
+            <rect
+              x="${x}"
+              y="${y}"
+              width="${barWidth}"
+              height="${barHeight}"
+              fill="${color}"
+              opacity="0.3"
+              rx="1"
+            />
+            <rect
+              x="${x}"
+              y="${filledY}"
+              width="${barWidth}"
+              height="${filledHeight}"
+              fill="${color}"
+              opacity="1"
+              rx="1"
+            />
+            <text
+              x="${x + barWidth / 2}"
+              y="${price >= 0 ? y - 3 : Math.min(y + barHeight + 12, viewBoxHeight - 2)}"
+              text-anchor="middle"
+              font-size="9"
+              fill="${color}"
+              font-weight="bold"
+            >
+              ${hours[index]}:00
+            </text>
+          </g>
         `;
       }
 
@@ -393,7 +413,7 @@ class PstrykCard extends HTMLElement {
           fill="${color}"
           opacity="0.3"
           rx="1"
-        />
+        >${tooltip}</rect>
       `;
     }).join('');
     
@@ -575,7 +595,19 @@ class PstrykCard extends HTMLElement {
       }
     }
 
-    const titleHtml = this._config.show_title && !isSuperCompact ? 
+    const statusBadge = (entity) => {
+      if (!this._config.show_price_status || isSuperCompact) return '';
+      if (entity.attributes['Is cheap'] === true) return `<div class="status-badge cheap">${this.translate('cheap')}</div>`;
+      if (entity.attributes['Is expensive'] === true) return `<div class="status-badge expensive">${this.translate('expensive')}</div>`;
+      return '';
+    };
+
+    const cachedBadge = (entity) => {
+      if (isSuperCompact || entity.attributes['Using cached data'] !== true) return '';
+      return `<div class="cached-badge" title="${this.translate('cached_data')}"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>`;
+    };
+
+    const titleHtml = this._config.show_title && !isSuperCompact ?
       `<div class="header">${this._config.title}</div>` : '';
     
     const attributeHtml = (value) => {
@@ -723,6 +755,30 @@ class PstrykCard extends HTMLElement {
           font-size: 10px;
           font-weight: 500;
         }
+        .status-badge {
+          position: absolute;
+          top: 4px;
+          left: 4px;
+          color: white;
+          border-radius: 4px;
+          padding: 2px 6px;
+          font-size: 10px;
+          font-weight: 500;
+        }
+        .status-badge.cheap {
+          background-color: #22c55e;
+        }
+        .status-badge.expensive {
+          background-color: #f97316;
+        }
+        .cached-badge {
+          position: absolute;
+          bottom: 4px;
+          right: 4px;
+          color: var(--secondary-text-color);
+          opacity: 0.6;
+          --mdc-icon-size: 14px;
+        }
         @keyframes alertPulseBorder {
           0%, 100% { 
             border-color: var(--divider-color);
@@ -746,6 +802,8 @@ class PstrykCard extends HTMLElement {
         <div class="prices-container">
           <div class="price-box ${buyAlert ? 'alert' : ''}">
             ${buyAlert && !isSuperCompact ? `<div class="alert-badge">${this.translate('alert')}</div>` : ''}
+            ${statusBadge(buyEntity)}
+            ${cachedBadge(buyEntity)}
             ${isSuperCompact ? `
               <div class="price-content">
                 <div class="price-icon">
@@ -770,6 +828,8 @@ class PstrykCard extends HTMLElement {
           
           <div class="price-box ${sellAlert ? 'alert' : ''}">
             ${sellAlert && !isSuperCompact ? `<div class="alert-badge">${this.translate('alert')}</div>` : ''}
+            ${statusBadge(sellEntity)}
+            ${cachedBadge(sellEntity)}
             ${isSuperCompact ? `
               <div class="price-content">
                 <div class="price-icon">
@@ -814,5 +874,5 @@ window.customCards.push({
   name: 'Pstryk Energy Card',
   description: 'Display energy prices with color coding, widgets (sparkline/bars), and alerts',
   preview: true,
-  version: '4.1.0'
+  version: '4.2.0'
 });
