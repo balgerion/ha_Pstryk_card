@@ -1,23 +1,23 @@
-# 🏠 Pstryk Energy Card dla Home Assistant
+# Pstryk Energy Card dla Home Assistant
 
 ![Version](https://img.shields.io/badge/version-4.1.0-blue.svg) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ---
 
-## ✨ Co potrafi?
+## Co potrafi?
 
-* 🎨 Trzy tryby wyświetlania: **pełny**, **kompaktowy**, **super kompaktowy**
-* 📊 Widgety: słupki lub linia z animacją
-* 🚨 Alerty: ostrzeżenia, gdy cena przekracza ustalone progi
-* 🔴🟢 Zmiana koloru na czerwony/zielony w zależności od ustawień cen w integracji
-* 🌍 Obsługa PL i EN – karta sama wykryje język
-* 🎯 Efekty i zbędne bajery
+* Trzy tryby wyświetlania: **pełny**, **kompaktowy**, **super kompaktowy**
+* Widgety: słupki lub linia z animacją
+* Alerty: ostrzeżenia, gdy cena przekracza ustalone progi
+* Zmiana koloru na czerwony/zielony w zależności od ustawień cen w integracji
+* Obsługa PL i EN – karta sama wykryje język
+* Efekty i zbędne bajery
 
 ![{8ADD4FD9-6CE4-4984-B94C-3022E159F392}](https://github.com/user-attachments/assets/d27dab7a-0055-4e85-9b22-12e0a8c3f8cf)
 ![{55E1D715-4207-4254-A312-30519EF5FC50}](https://github.com/user-attachments/assets/9ca7fef7-1693-4b67-ba07-32cb5d36f38b)
 ![{4FC17EE9-74AA-4445-BF92-BE63CAB8F9BD}](https://github.com/user-attachments/assets/e65754ac-1a92-49d7-bd03-0af2f87a8117)
 
-## 📦 Jak zainstalować?
+## Jak zainstalować?
 
 **1. HACS (najprościej)**
 
@@ -39,7 +39,7 @@
 
 ---
 
-## 🚀 Szybki start - przykłady
+## Szybki start - przykłady
 
 ##full
                    
@@ -81,7 +81,7 @@ alert_buy_above: 1.0              # liczba lub null
 alert_sell_below: 0.1             # liczba lub null
 ```
 
-## ⚙️ Wszystkie opcje
+## Wszystkie opcje
 
 * **buy\_entity** (`string`) – encja z ceną zakupu (np. `sensor.pstryk_current_buy_price`)
 * **sell\_entity** (`string`) – encja z ceną sprzedaży
