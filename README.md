@@ -12,7 +12,7 @@
 * Obsługa cen ujemnych na wykresach (słupki w dół, linia zera)
 * Alerty: pulsująca ramka i badge, gdy cena przekroczy ustalone progi
 * Znacznik Tanio/Drogo prosto z API Pstryka (opcjonalny)
-* Cena i godzina po najechaniu na słupek wykresu
+* Cena i godzina po najechaniu na wykres (słupki i linia)
 * Etykiety min/max na wykresie liniowym
 * Ikonka w rogu kafelka, gdy karta pokazuje dane z cache (awaria API)
 * Zmiana koloru na czerwony/zielony w zależności od ustawień cen w integracji
