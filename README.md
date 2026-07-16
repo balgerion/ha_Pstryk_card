@@ -1,6 +1,6 @@
 # Pstryk Energy Card dla Home Assistant
 
-![Version](https://img.shields.io/badge/version-4.2.1-blue.svg) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-4.3.0-blue.svg) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ---
 
@@ -99,7 +99,8 @@ alert_sell_below: 0.1             # liczba lub null
 * **title** (`string`, domyślnie `Energy Prices`) – tekst nagłówka
 * **show\_title** (`true`/`false`, domyślnie `true`) – wyświetl tytuł (w `super_compact` zawsze ukryty)
 * **show\_legend** (`true`/`false`, domyślnie `true` w `full`) – legenda kolorów (tylko w `full`)
-* **attribute\_config** (`next_hour`/`average_remaining`/`average_24`/nazwa atrybutu/`null`, domyślnie `next_hour`) – dodatkowy wiersz pod ceną: następna godzina, średnia do końca doby, średnia 24h albo dowolny atrybut encji; `null` wyłącza (w `super_compact` zawsze wyłączony)
+* **attribute\_config** (`next_hour`/`average_remaining`/`average_24`/`sunset_sunrise`/nazwa atrybutu/`null`, domyślnie `next_hour`) – dodatkowy wiersz pod ceną: następna godzina, średnia do końca doby, średnia 24h, średnia wschód–zachód albo dowolny atrybut encji; `null` wyłącza (w `super_compact` zawsze wyłączony)
+* **buy\_attribute\_config** / **sell\_attribute\_config** (te same wartości co `attribute_config`, domyślnie `null`) – osobny atrybut dla kafelka kupna/sprzedaży; nadpisuje wspólne `attribute_config`
 * **show\_widget** (`none`/`bars`/`sparkline`, domyślnie `none`) – wykres cen do końca doby (w `super_compact` niedostępny)
 * **widget\_hours** (`1-24`, domyślnie `24`, w `compact` `12`) – ile godzin pokazać na wykresie, licząc od bieżącej (maksymalnie do końca doby)
 * **widget\_effect** (`none`/`pulse`/`fill`, domyślnie `none`) – znacznik aktualnej godziny: `pulse` = pulsująca kropka (sparkline), `fill` = wypełniający się słupek z etykietą godziny (bars)
