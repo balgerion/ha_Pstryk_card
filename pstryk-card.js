@@ -41,6 +41,8 @@ class PstrykCard extends HTMLElement {
       show_title: true,
       show_legend: true,
       attribute_config: 'next_hour',
+      buy_attribute_config: null,
+      sell_attribute_config: null,
       hover_effect: 'lift',
       show_widget: 'none',
       widget_hours: 24,
@@ -193,7 +195,10 @@ class PstrykCard extends HTMLElement {
         
       case 'average_24':
         return entity.attributes['Average price today /24'];
-               
+
+      case 'sunset_sunrise':
+        return entity.attributes['Average price today s/s'];
+
       default:
         return entity.attributes[config];
     }
@@ -211,7 +216,11 @@ class PstrykCard extends HTMLElement {
         
       case 'average_24':
         return this.translate('average_24');
-        
+
+      case 'sunset_sunrise':
+        this._getTranslations();
+        return this._isPolish ? 'Średnia s/s' : 'Average s/s';
+
       default:
         return config;
     }
@@ -569,12 +578,13 @@ class PstrykCard extends HTMLElement {
     const sellColor = this.getPriceColor(sellEntity, sellPrice);
     
     this._remainingHours = null;
-    
-    const buyAttribute = this._config.attribute_config ? 
-      this.getAttributeValue(buyEntity, this._config.attribute_config) : null;
-    const sellAttribute = this._config.attribute_config ? 
-      this.getAttributeValue(sellEntity, this._config.attribute_config) : null;
-    const attributeLabel = this.getAttributeLabel(this._config.attribute_config);
+
+    const buyAttrConfig = this._config.buy_attribute_config || this._config.attribute_config;
+    const sellAttrConfig = this._config.sell_attribute_config || this._config.attribute_config;
+    const buyAttribute = buyAttrConfig ? this.getAttributeValue(buyEntity, buyAttrConfig) : null;
+    const buyAttributeLabel = this.getAttributeLabel(buyAttrConfig);
+    const sellAttribute = sellAttrConfig ? this.getAttributeValue(sellEntity, sellAttrConfig) : null;
+    const sellAttributeLabel = this.getAttributeLabel(sellAttrConfig);
 
     let buyWidgetHtml = '';
     let sellWidgetHtml = '';
@@ -620,11 +630,11 @@ class PstrykCard extends HTMLElement {
     const titleHtml = this._config.show_title && !isSuperCompact ?
       `<div class="header">${this._config.title}</div>` : '';
     
-    const attributeHtml = (value) => {
-      if (isSuperCompact || !this._config.attribute_config || value === null) return '';
+    const attributeHtml = (value, label, attrConfig) => {
+      if (isSuperCompact || !attrConfig || value === null || value === undefined) return '';
       return `
         <div class="attribute-info">
-          ${attributeLabel}: <span class="attribute-value">${this.formatPrice(value)}</span>
+          ${label}: <span class="attribute-value">${this.formatPrice(value)}</span>
         </div>
       `;
     };
@@ -837,7 +847,7 @@ class PstrykCard extends HTMLElement {
               <div class="price-value" style="color: ${buyColor};">
                 ${this.formatPrice(buyPrice)}
               </div>
-              ${attributeHtml(buyAttribute)}
+              ${attributeHtml(buyAttribute, buyAttributeLabel, buyAttrConfig)}
               ${buyWidgetHtml}
             `}
           </div>
@@ -863,7 +873,7 @@ class PstrykCard extends HTMLElement {
               <div class="price-value" style="color: ${sellColor};">
                 ${this.formatPrice(sellPrice)}
               </div>
-              ${attributeHtml(sellAttribute)}
+              ${attributeHtml(sellAttribute, sellAttributeLabel, sellAttrConfig)}
               ${sellWidgetHtml}
             `}
           </div>
@@ -890,5 +900,5 @@ window.customCards.push({
   name: 'Pstryk Energy Card',
   description: 'Display energy prices with color coding, widgets (sparkline/bars), and alerts',
   preview: true,
-  version: '4.2.1'
+  version: '4.3.0'
 });
