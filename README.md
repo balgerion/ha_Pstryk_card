@@ -1,6 +1,6 @@
 # Pstryk Energy Card dla Home Assistant
 
-![Version](https://img.shields.io/badge/version-4.3.0-blue.svg) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Version](https://img.shields.io/badge/version-4.3.1-blue.svg) ![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ---
 
@@ -18,7 +18,8 @@
 * Zmiana koloru na czerwony/zielony w zależności od ustawień cen w integracji
 * Dodatkowy wiersz z atrybutem: cena następnej godziny, średnia do końca doby lub średnia 24h
 * Klik w kafelek otwiera okno more-info encji (opcjonalnie)
-* Obsługa PL i EN – karta sama wykryje język
+* Obsługa PL i EN – karta bierze język z ustawień Home Assistanta, a dopiero gdy go brak, z przeglądarki
+* Godziny na wykresie liczone w strefie czasowej serwera Home Assistanta, więc wykres pokazuje właściwą godzinę także wtedy, gdy oglądasz go z innej strefy; etykiety godzin idą za ustawieniem profilu użytkownika (strefa serwera albo lokalna)
 * Efekty i zbędne bajery
 
 ![{8ADD4FD9-6CE4-4984-B94C-3022E159F392}](https://github.com/user-attachments/assets/d27dab7a-0055-4e85-9b22-12e0a8c3f8cf)
@@ -105,7 +106,37 @@ alert_sell_below: 0.1             # liczba lub null
 * **widget\_hours** (`1-24`, domyślnie `24`, w `compact` `12`) – ile godzin pokazać na wykresie, licząc od bieżącej (maksymalnie do końca doby)
 * **widget\_effect** (`none`/`pulse`/`fill`, domyślnie `none`) – znacznik aktualnej godziny: `pulse` = pulsująca kropka (sparkline), `fill` = wypełniający się słupek z etykietą godziny (bars)
 * **show\_price\_status** (`true`/`false`, domyślnie `false`) – badge Tanio/Drogo w lewym górnym rogu kafelka wg flag `Is cheap`/`Is expensive` z API (w `super_compact` niedostępny)
-* **alert\_buy\_above** (liczba lub `null`, domyślnie `null`) – alert (pulsująca ramka + badge), gdy cena zakupu przekroczy próg
-* **alert\_sell\_below** (liczba lub `null`, domyślnie `null`) – alert, gdy cena sprzedaży spadnie poniżej progu
+* **alert\_buy\_above** (liczba lub `null`, domyślnie `null`) – alert (pulsująca ramka + badge), gdy cena zakupu przekroczy próg; `0` jest zwykłym progiem
+* **alert\_sell\_below** (liczba lub `null`, domyślnie `null`) – alert, gdy cena sprzedaży spadnie poniżej progu; `0` daje alert przy cenie ujemnej
 * **hover\_effect** (`none`/`lift`/`glow`/`shake`/`pulse`, domyślnie `lift`) – animacja kafelka po najechaniu myszką
 * **click\_action** (`none`/`more-info`, domyślnie `none`) – kliknięcie kafelka otwiera okno more-info encji
+
+## Strefa czasowa
+
+Integracja podaje godziny cen w czasie serwera Home Assistanta (`start` bez strefy, np. `2026-11-26T15:00:00`). Karta zamienia je na chwile w strefie serwera (`hass.config.time_zone`) i dopiero wtedy szuka bieżącej godziny, więc z przeglądarki w innej strefie widać te same słupki co w domu. Czas ze strefą (`+01:00`, `Z`) też jest obsługiwany. Etykiety godzin pokazują czas serwera, gdy w profilu użytkownika HA ustawiona jest strefa serwera, a czas przeglądarki, gdy lokalna. Gdy lista cen nie zawiera bieżącej godziny, widget pokazuje brak danych zamiast cen od północy.
+
+Do wersji 4.3.0 bieżąca godzina była brana z zegara przeglądarki: o 15:49 czasu polskiego karta otwarta w Tokio pokazywała ceny od 23:00.
+
+## Jak karta liczy
+
+* Znacznik bieżącej godziny (wypełnienie słupka, kropka na linii) odświeża się co minutę, także gdy pulpit jest stale otwarty, a o pełnej godzinie wykres sam przechodzi na następną.
+* Kolor ceny (zielony/czerwony) zależy od tego, czy **bieżąca godzina** jest na liście `Best prices` albo `Worst prices` encji, a nie od tego, czy cena jest równa którejś z tych list. Gdy listy zawierają same liczby (starsze wersje integracji), karta porównuje ceny jak dawniej.
+* Jednostka przy cenie pochodzi z encji (`unit_of_measurement`); gdy encja jej nie podaje, karta pisze `PLN/kWh`.
+* Jeden albo dwa ostatnie słupki doby zachowują szerokość słupka z czterech, a linia przy ostatniej godzinie doby jest pozioma, zamiast znikać.
+* Tytuł i nazwy atrybutów z konfiguracji są wypisywane jako tekst, więc znaki `<` i `&` niczego nie psują.
+
+## Testy
+
+`node --test tests/` – logika widgetu w strefach Warszawa, Tokio, UTC i Nowy Jork oraz testy pozostałych funkcji karty. Wymaga tylko Node, bez instalowania pakietów.
+
+## Zmiany w 4.3.1
+
+* wykres pokazywał złe godziny w przeglądarce z inną strefą czasową niż serwer; lista cen bez bieżącej godziny dawała ceny od północy
+* próg alertu równy `0` był ignorowany
+* znacznik bieżącej godziny stał w miejscu na otwartym pulpicie
+* kolor ceny wynikał z równej wartości, a nie z godziny
+* język przeglądarki przebijał język ustawiony w Home Assistancie
+* tytuł i nazwy atrybutów trafiały do HTML bez zabezpieczenia
+* jednostka `PLN/kWh` była wpisana na stałe
+* przy ostatniej godzinie doby linia znikała, a pojedynczy słupek zajmował całą szerokość
+* zmiana konfiguracji była widoczna dopiero po zmianie ceny; „Buy”/„Sell” w komunikacie o braku danych nie były tłumaczone

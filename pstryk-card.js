@@ -7,6 +7,28 @@ class PstrykCard extends HTMLElement {
     this._remainingHours = null;
     this._translations = null;
     this._isPolish = false;
+    this._timer = null;
+  }
+
+  connectedCallback() {
+    clearInterval(this._timer);
+    this._timer = setInterval(() => {
+      if (this._hass && this._config.show_widget && this._config.show_widget !== 'none') this.render();
+    }, 60000);
+  }
+
+  disconnectedCallback() {
+    clearInterval(this._timer);
+    this._timer = null;
+  }
+
+  _escape(value) {
+    const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(value).replace(/[&<>"']/g, character => entities[character]);
+  }
+
+  _unit(entity) {
+    return this._escape(entity?.attributes?.unit_of_measurement || 'PLN/kWh');
   }
 
   setConfig(config) {
@@ -30,6 +52,8 @@ class PstrykCard extends HTMLElement {
     }
     
     this._config = this._applyModeDefaults(config);
+    this._translations = null;
+    if (this._hass) this.render();
   }
 
   _applyModeDefaults(config) {
@@ -114,9 +138,8 @@ class PstrykCard extends HTMLElement {
 
   _getTranslations() {
     if (!this._translations) {
-      const isPolish = this._hass?.language === 'pl' ||
-                      (this._hass?.locale?.language === 'pl') ||
-                      (navigator.language?.startsWith('pl'));
+      const language = this._hass?.locale?.language || this._hass?.language || navigator.language || '';
+      const isPolish = String(language).toLowerCase().startsWith('pl');
       this._isPolish = isPolish;
 
       this._translations = {
@@ -146,13 +169,11 @@ class PstrykCard extends HTMLElement {
     const numValue = parseFloat(value);
     if (isNaN(numValue)) return false;
     
-    if (type === 'buy' && this._config.alert_buy_above) {
-      return numValue > this._config.alert_buy_above;
-    }
-    if (type === 'sell' && this._config.alert_sell_below) {
-      return numValue < this._config.alert_sell_below;
-    }
-    return false;
+    const threshold = type === 'buy' ? this._config.alert_buy_above : this._config.alert_sell_below;
+    if (threshold === null || threshold === undefined || threshold === '') return false;
+    const limit = Number(threshold);
+    if (!isFinite(limit)) return false;
+    return type === 'buy' ? numValue > limit : numValue < limit;
   }
 
   getPriceColor(entity, price) {
@@ -162,18 +183,28 @@ class PstrykCard extends HTMLElement {
     if (isNaN(currentPrice)) return 'var(--primary-text-color)';
     
     const epsilon = 0.001;
-    const matches = (list) => (list || []).some(p => Math.abs((typeof p === 'object' ? p.price : p) - currentPrice) < epsilon);
+    const zone = this._serverZone();
+    const slots = this._slots(entity);
+    const index = this._currentIndex(slots, Date.now());
+    const matches = (list) => {
+      const entries = Array.isArray(list) ? list : [];
+      const timed = entries.length > 0 && entries.every(p => p && typeof p === 'object' && p.start);
+      if (timed && index !== -1) {
+        return entries.some(p => this._toInstant(p.start, zone) === slots[index].at);
+      }
+      return entries.some(p => Math.abs((p && typeof p === 'object' ? p.price : p) - currentPrice) < epsilon);
+    };
 
     if (matches(entity.attributes['Best prices'])) return '#4ade80';
     if (matches(entity.attributes['Worst prices'])) return '#f87171';
     return 'var(--primary-text-color)';
   }
 
-  formatPrice(price) {
+  formatPrice(price, unit = 'PLN/kWh') {
     if (price === null || price === undefined || price === '') return '--';
     const numPrice = parseFloat(price);
     if (isNaN(numPrice)) return '--';
-    return `${numPrice.toFixed(2)} PLN/kWh`;
+    return `${numPrice.toFixed(2)} ${unit}`;
   }
 
   getAttributeValue(entity, config) {
@@ -226,36 +257,108 @@ class PstrykCard extends HTMLElement {
     }
   }
 
-  generateWidgetData(entity) {
-    const allPrices = entity?.attributes?.['All prices'];
-    if (!Array.isArray(allPrices) || allPrices.length === 0) {
-      return { data: [], hours: [], dotPosition: 0 };
+  _serverZone() {
+    const zone = this._hass?.config?.time_zone;
+    if (!zone) return undefined;
+    try {
+      new Intl.DateTimeFormat('en-GB', { timeZone: zone });
+      return zone;
+    } catch (error) {
+      return undefined;
     }
+  }
 
-    const now = new Date();
-    const pricesWithTime = allPrices
+  _zoneOffset(instant, zone) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).formatToParts(new Date(instant));
+    const p = Object.fromEntries(parts.map(part => [part.type, Number(part.value)]));
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(instant / 1000) * 1000;
+  }
+
+  _toInstant(start, zone) {
+    const text = String(start);
+    if (/(Z|[+-]\d{2}:?\d{2})$/.test(text)) return new Date(text).getTime();
+    const m = text.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return NaN;
+    if (!zone) return new Date(text).getTime();
+    const wall = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+    const first = wall - this._zoneOffset(wall, zone);
+    return wall - this._zoneOffset(first, zone);
+  }
+
+  _hourLabel(instant, zone) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone,
+      hourCycle: 'h23',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).formatToParts(new Date(instant));
+    const p = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${Number(p.hour)}:${p.minute}`;
+  }
+
+  _slots(entity) {
+    const allPrices = entity?.attributes?.['All prices'];
+    if (!Array.isArray(allPrices)) return [];
+    const serverZone = this._serverZone();
+    return allPrices
       .map(item => ({
         price: parseFloat(item?.price),
-        hour: item?.start ? new Date(item.start).getHours() : NaN
+        at: item?.start ? this._toInstant(item.start, serverZone) : NaN
       }))
-      .filter(item => isFinite(item.price) && isFinite(item.hour));
+      .filter(item => isFinite(item.price) && isFinite(item.at))
+      .sort((a, b) => a.at - b.at);
+  }
 
-    let currentIndex = pricesWithTime.findIndex(item => item.hour === now.getHours());
-    if (currentIndex === -1) currentIndex = 0;
+  _slotLength(slots, index) {
+    return (slots[index + 1]?.at ?? slots[index].at + 3600000) - slots[index].at;
+  }
 
-    const hoursToShow = Math.min(this._config.widget_hours || 24, pricesWithTime.length - currentIndex);
-    const futureData = pricesWithTime.slice(currentIndex, currentIndex + hoursToShow);
+  _currentIndex(slots, now) {
+    let currentIndex = -1;
+    slots.forEach((slot, index) => {
+      if (slot.at <= now) currentIndex = index;
+    });
+    if (currentIndex === -1) return -1;
+    return now - slots[currentIndex].at < this._slotLength(slots, currentIndex) ? currentIndex : -1;
+  }
+
+  generateWidgetData(entity) {
+    const empty = { data: [], hours: [], dotPosition: 0 };
+    const slots = this._slots(entity);
+    const now = Date.now();
+    const currentIndex = this._currentIndex(slots, now);
+    if (currentIndex === -1) return empty;
+
+    const displayZone = this._hass?.locale?.time_zone === 'server' ? this._serverZone() : undefined;
+    const current = slots[currentIndex];
+    const length = this._slotLength(slots, currentIndex);
+
+    const hoursToShow = Math.min(this._config.widget_hours || 24, slots.length - currentIndex);
+    const futureData = slots.slice(currentIndex, currentIndex + hoursToShow);
 
     return {
       data: futureData.map(d => d.price),
-      hours: futureData.map(d => d.hour),
-      dotPosition: now.getMinutes() / 60
+      hours: futureData.map(d => this._hourLabel(d.at, displayZone)),
+      dotPosition: (now - current.at) / length
     };
   }
 
-  createSparkline(data, hours, height, color, dotPosition) {
-    if (!data || data.length < 2) return '';
-    
+  createSparkline(data, hours, height, color, dotPosition, unit = 'PLN/kWh') {
+    if (!data || data.length < 1) return '';
+    if (data.length === 1) {
+      data = [data[0], data[0]];
+      hours = [hours[0], hours[0]];
+    }
+
     const displayMin = Math.min(...data, 0);
     const displayMax = Math.max(...data, 0);
     const range = displayMax - displayMin || 1;
@@ -325,7 +428,7 @@ class PstrykCard extends HTMLElement {
     const hoverStrips = data.map((price, index) => {
       const left = Math.max(paddingX, paddingX + (index - 0.5) * step);
       const right = Math.min(paddingX + chartWidth, paddingX + (index + 0.5) * step);
-      return `<rect x="${left}" y="0" width="${right - left}" height="${viewBoxHeight}" fill="transparent"><title>${hours[index]}:00 - ${price.toFixed(2)} PLN/kWh</title></rect>`;
+      return `<rect x="${left}" y="0" width="${right - left}" height="${viewBoxHeight}" fill="transparent"><title>${hours[index]} - ${price.toFixed(2)} ${unit}</title></rect>`;
     }).join('');
 
     return `
@@ -347,7 +450,7 @@ class PstrykCard extends HTMLElement {
     `;
   }
 
-  createBars(data, hours, height, color, dotPosition) {
+  createBars(data, hours, height, color, dotPosition, unit = 'PLN/kWh') {
     if (!data || data.length < 1) return '';
     
     const viewBoxWidth = 200;
@@ -363,11 +466,13 @@ class PstrykCard extends HTMLElement {
 
     const zeroY = paddingY + chartHeight - ((0 - min) / range) * chartHeight;
 
-    const barWidth = Math.max(chartWidth / data.length * 0.8, 2);
-    const barGap = chartWidth / data.length * 0.2;
+    const columns = Math.max(data.length, 4);
+    const barWidth = Math.max(chartWidth / columns * 0.8, 2);
+    const barGap = chartWidth / columns * 0.2;
+    const offset = Math.max((chartWidth - data.length * (barWidth + barGap) + barGap) / 2, 0);
 
     const bars = data.map((price, index) => {
-      const x = paddingX + index * (barWidth + barGap);
+      const x = paddingX + offset + index * (barWidth + barGap);
       let barHeight, y;
       
       if (price >= 0) {
@@ -380,7 +485,7 @@ class PstrykCard extends HTMLElement {
 
       barHeight = Math.max(barHeight, 1);
 
-      const tooltip = `<title>${hours[index]}:00 - ${price.toFixed(2)} PLN/kWh</title>`;
+      const tooltip = `<title>${hours[index]} - ${price.toFixed(2)} ${unit}</title>`;
 
       if (index === 0 && this._config.widget_effect === 'fill') {
         const filledHeight = barHeight * dotPosition;
@@ -416,7 +521,7 @@ class PstrykCard extends HTMLElement {
               fill="${color}"
               font-weight="bold"
             >
-              ${hours[index]}:00
+              ${hours[index]}
             </text>
           </g>
         `;
@@ -558,7 +663,7 @@ class PstrykCard extends HTMLElement {
         <ha-card>
           <div style="padding: 16px;">
             <div style="color: var(--error-color);">
-              ${this.translate('entity_not_found')}: ${this._config.buy_entity} or ${this._config.sell_entity}
+              ${this.translate('entity_not_found')}: ${this._escape(this._config.buy_entity)} / ${this._escape(this._config.sell_entity)}
             </div>
           </div>
         </ha-card>
@@ -572,6 +677,8 @@ class PstrykCard extends HTMLElement {
     
     const buyPrice = buyEntity.state;
     const sellPrice = sellEntity.state;
+    const buyUnit = this._unit(buyEntity);
+    const sellUnit = this._unit(sellEntity);
     const buyAlert = this.checkAlert('buy', buyPrice);
     const sellAlert = this.checkAlert('sell', sellPrice);
     const buyColor = this.getPriceColor(buyEntity, buyPrice);
@@ -598,21 +705,13 @@ class PstrykCard extends HTMLElement {
         </div>
       `;
 
-      if (this._config.show_widget === 'sparkline') {
-        if (buyData.data.length > 1) {
-          buyWidgetHtml = this.createSparkline(buyData.data, buyData.hours, styles.widget.height, buyColor, buyData.dotPosition);
-        }
-        if (sellData.data.length > 1) {
-          sellWidgetHtml = this.createSparkline(sellData.data, sellData.hours, styles.widget.height, sellColor, sellData.dotPosition);
-        }
-      } else if (this._config.show_widget === 'bars') {
-        buyWidgetHtml = buyData.data.length > 0 ?
-          this.createBars(buyData.data, buyData.hours, styles.widget.height, buyColor, buyData.dotPosition) :
-          noData('Buy');
-        sellWidgetHtml = sellData.data.length > 0 ?
-          this.createBars(sellData.data, sellData.hours, styles.widget.height, sellColor, sellData.dotPosition) :
-          noData('Sell');
-      }
+      const draw = this._config.show_widget === 'sparkline' ? this.createSparkline : this.createBars;
+      buyWidgetHtml = buyData.data.length > 0 ?
+        draw.call(this, buyData.data, buyData.hours, styles.widget.height, buyColor, buyData.dotPosition, buyUnit) :
+        noData(this.translate('buy_price'));
+      sellWidgetHtml = sellData.data.length > 0 ?
+        draw.call(this, sellData.data, sellData.hours, styles.widget.height, sellColor, sellData.dotPosition, sellUnit) :
+        noData(this.translate('sell_price'));
     }
 
     const statusBadge = (entity) => {
@@ -628,13 +727,13 @@ class PstrykCard extends HTMLElement {
     };
 
     const titleHtml = this._config.show_title && !isSuperCompact ?
-      `<div class="header">${this._config.title}</div>` : '';
+      `<div class="header">${this._escape(this._config.title)}</div>` : '';
     
-    const attributeHtml = (value, label, attrConfig) => {
+    const attributeHtml = (value, label, attrConfig, unit) => {
       if (isSuperCompact || !attrConfig || value === null || value === undefined) return '';
       return `
         <div class="attribute-info">
-          ${label}: <span class="attribute-value">${this.formatPrice(value)}</span>
+          ${this._escape(label)}: <span class="attribute-value">${this.formatPrice(value, unit)}</span>
         </div>
       `;
     };
@@ -836,7 +935,7 @@ class PstrykCard extends HTMLElement {
                   <ha-icon icon="mdi:transmission-tower-import" style="color: ${buyColor};"></ha-icon>
                 </div>
                 <div class="price-value" style="color: ${buyColor};">
-                  ${this.formatPrice(buyPrice)}
+                  ${this.formatPrice(buyPrice, buyUnit)}
                 </div>
               </div>
             ` : `
@@ -845,9 +944,9 @@ class PstrykCard extends HTMLElement {
               </div>
               <div class="price-label">${this.translate('buy_price')}</div>
               <div class="price-value" style="color: ${buyColor};">
-                ${this.formatPrice(buyPrice)}
+                ${this.formatPrice(buyPrice, buyUnit)}
               </div>
-              ${attributeHtml(buyAttribute, buyAttributeLabel, buyAttrConfig)}
+              ${attributeHtml(buyAttribute, buyAttributeLabel, buyAttrConfig, buyUnit)}
               ${buyWidgetHtml}
             `}
           </div>
@@ -862,7 +961,7 @@ class PstrykCard extends HTMLElement {
                   <ha-icon icon="mdi:transmission-tower-export" style="color: ${sellColor};"></ha-icon>
                 </div>
                 <div class="price-value" style="color: ${sellColor};">
-                  ${this.formatPrice(sellPrice)}
+                  ${this.formatPrice(sellPrice, sellUnit)}
                 </div>
               </div>
             ` : `
@@ -871,9 +970,9 @@ class PstrykCard extends HTMLElement {
               </div>
               <div class="price-label">${this.translate('sell_price')}</div>
               <div class="price-value" style="color: ${sellColor};">
-                ${this.formatPrice(sellPrice)}
+                ${this.formatPrice(sellPrice, sellUnit)}
               </div>
-              ${attributeHtml(sellAttribute, sellAttributeLabel, sellAttrConfig)}
+              ${attributeHtml(sellAttribute, sellAttributeLabel, sellAttrConfig, sellUnit)}
               ${sellWidgetHtml}
             `}
           </div>
@@ -900,5 +999,5 @@ window.customCards.push({
   name: 'Pstryk Energy Card',
   description: 'Display energy prices with color coding, widgets (sparkline/bars), and alerts',
   preview: true,
-  version: '4.3.0'
+  version: '4.3.1'
 });
