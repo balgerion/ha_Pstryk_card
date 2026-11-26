@@ -3,7 +3,16 @@ const test = require('node:test');
 
 globalThis.HTMLElement = class {
   attachShadow() {
-    this.shadowRoot = { innerHTML: '', querySelectorAll: () => [] };
+    this.nodes = {};
+    this.writes = 0;
+    const element = this;
+    let html = '';
+    this.shadowRoot = {
+      get innerHTML() { return html; },
+      set innerHTML(value) { html = value; element.writes += 1; },
+      querySelectorAll: () => [],
+      querySelector: (selector) => this.nodes[selector] || null
+    };
     return this.shadowRoot;
   }
 };
@@ -146,4 +155,162 @@ test('a changed configuration is drawn at once', () => {
   assert.ok(made.shadowRoot.innerHTML.includes('First'));
   made.setConfig({ buy_entity: 'sensor.buy', sell_entity: 'sensor.sell', title: 'Second' });
   assert.ok(made.shadowRoot.innerHTML.includes('Second'));
+});
+
+test('a minute later only the widgets are replaced, and a new hour redraws the card', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const made = card({ show_widget: 'bars', widget_effect: 'fill', widget_hours: 4 });
+  made.nodes = { '.widget-buy': { innerHTML: '' }, '.widget-sell': { innerHTML: '' } };
+  const whole = made.shadowRoot.innerHTML;
+  let draws = 0;
+  const render = made.render.bind(made);
+  made.render = () => { draws += 1; render(); };
+  made.connectedCallback();
+  Date.now = () => NOW + 60000;
+  t.mock.timers.tick(60000);
+  assert.equal(draws, 0);
+  assert.equal(made.shadowRoot.innerHTML, whole);
+  assert.ok(made.nodes['.widget-buy'].innerHTML.includes('<title>15:00 - 1.50 PLN/kWh</title>'));
+  assert.ok(made.nodes['.widget-sell'].innerHTML.includes('<svg'));
+  Date.now = () => NOW + 11 * 60000;
+  t.mock.timers.tick(60000);
+  assert.equal(draws, 1);
+  assert.ok(made.shadowRoot.innerHTML.includes('<title>16:00 - 1.60 PLN/kWh</title>'));
+  made.disconnectedCallback();
+});
+
+test('a change of language or of the time zone in the profile is drawn without a new price', () => {
+  const made = card({ show_widget: 'bars', widget_hours: 4 });
+  const first = made._hass;
+  assert.ok(made.shadowRoot.innerHTML.includes('Buy Price'));
+  made.hass = { ...first, language: 'pl', locale: { language: 'pl', time_zone: 'server' } };
+  assert.ok(made.shadowRoot.innerHTML.includes('Cena Zakupu'));
+  made.hass = { ...first, locale: { language: 'en', time_zone: 'local' } };
+  const expected = new Intl.DateTimeFormat('en-GB', { hourCycle: 'h23', hour: 'numeric', minute: '2-digit' }).formatToParts(new Date(NOW - 49 * 60000));
+  const label = `${Number(expected.find(part => part.type === 'hour').value)}:${expected.find(part => part.type === 'minute').value}`;
+  assert.ok(made.shadowRoot.innerHTML.includes(`<title>${label} - 1.50 PLN/kWh</title>`), label);
+  let draws = 0;
+  made.render = () => { draws += 1; };
+  made.hass = { ...made._hass, states: { ...made._hass.states, 'sensor.other': {} } };
+  assert.equal(draws, 0);
+});
+
+test('the day the clocks go back: the repeated hour is two slots, or one price for both', () => {
+  const d24 = day('2026-10-25');
+  const d25 = [...d24.slice(0, 3), { start: '2026-10-25T02:00:00', price: 9.9 }, ...d24.slice(3)];
+  const at = (iso, list) => {
+    Date.now = () => new Date(iso).getTime();
+    const made = card({ show_widget: 'bars', widget_hours: 4 }, { 'sensor.buy': entity(1.5, { 'All prices': list }) });
+    const out = made.generateWidgetData(made._hass.states['sensor.buy']);
+    return [out.hours, out.data, Number(out.dotPosition.toFixed(2))];
+  };
+  assert.deepEqual(at('2026-10-25T00:30:00Z', d25), [['2:00', '2:00', '3:00', '4:00'], [0.2, 9.9, 0.3, 0.4], 0.5]);
+  assert.deepEqual(at('2026-10-25T01:30:00Z', d25), [['2:00', '3:00', '4:00', '5:00'], [9.9, 0.3, 0.4, 0.5], 0.5]);
+  assert.deepEqual(at('2026-10-25T00:30:00Z', d24), [['2:00', '3:00', '4:00', '5:00'], [0.2, 0.3, 0.4, 0.5], 0.25]);
+  assert.deepEqual(at('2026-10-25T01:30:00Z', d24), [['2:00', '3:00', '4:00', '5:00'], [0.2, 0.3, 0.4, 0.5], 0.75]);
+  assert.deepEqual(at('2026-10-24T23:30:00Z', d24), [['1:00', '2:00', '3:00', '4:00'], [0.1, 0.2, 0.3, 0.4], 0.5]);
+});
+
+test('the day the clocks go forward: the hour that does not exist is left out', () => {
+  Date.now = () => new Date('2026-03-29T00:30:00Z').getTime();
+  const made = card({ show_widget: 'bars', widget_hours: 4 }, { 'sensor.buy': entity(1.5, { 'All prices': day('2026-03-29') }) });
+  const out = made.generateWidgetData(made._hass.states['sensor.buy']);
+  assert.deepEqual([out.hours, out.data], [['1:00', '3:00', '4:00', '5:00'], [0.1, 0.3, 0.4, 0.5]]);
+});
+
+test('drawing again builds no new formatter and does not convert the list twice', () => {
+  const two = [...day('2026-11-25'), ...day('2026-11-26')];
+  const made = card({ show_widget: 'bars', widget_hours: 24 }, { 'sensor.buy': entity(1.5, { 'All prices': two }), 'sensor.sell': entity(1.5, { 'All prices': two }) });
+  const Real = Intl.DateTimeFormat;
+  let built = 0;
+  let converted = 0;
+  const instants = made._instants.bind(made);
+  made._instants = (...args) => { converted += 1; return instants(...args); };
+  Intl.DateTimeFormat = function (...args) {
+    built += 1;
+    return new Real(...args);
+  };
+  try {
+    for (let i = 0; i < 10; i += 1) made.render();
+  } finally {
+    Intl.DateTimeFormat = Real;
+  }
+  assert.equal(built, 0);
+  assert.equal(converted, 0);
+});
+
+test('an attribute that is not a price is written as it is', () => {
+  const made = card();
+  assert.equal(made.formatAttribute(1.234, 'PLN/kWh'), '1.23 PLN/kWh');
+  assert.equal(made.formatAttribute('1,5', 'PLN/kWh'), '1.50 PLN/kWh');
+  assert.equal(made.formatAttribute('2026-11-26 02:00:05', 'PLN/kWh'), '2026-11-26 02:00:05');
+  assert.equal(made.formatAttribute('<b>', 'PLN/kWh'), '&lt;b&gt;');
+  assert.equal(made.formatAttribute(true, 'PLN/kWh'), 'true');
+  assert.equal(made.formatAttribute([1, 2], 'PLN/kWh'), '--');
+  const shown = card({ attribute_config: 'Last updated' }, { 'sensor.buy': entity(1.5, { 'Last updated': '2026-11-26 02:00:05' }) });
+  assert.ok(shown.shadowRoot.innerHTML.includes('Last updated: <span class="attribute-value">2026-11-26 02:00:05</span>'));
+});
+
+test('widget_hours outside 1 to 48 falls back to the default of the mode', () => {
+  const hours = (config) => card(config)._config.widget_hours;
+  assert.equal(hours({ widget_hours: 'abc' }), 24);
+  assert.equal(hours({ widget_hours: -3 }), 24);
+  assert.equal(hours({ widget_hours: 0.4 }), 24);
+  assert.equal(hours({ widget_hours: 'abc', card_mode: 'compact' }), 12);
+  assert.equal(hours({ widget_hours: '6' }), 6);
+  assert.equal(hours({ widget_hours: 6.9 }), 6);
+  assert.equal(hours({ widget_hours: 100 }), 48);
+});
+
+test('the page is written only when what it shows has changed', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const made = card({ show_widget: 'bars', widget_effect: 'none', widget_hours: 4 });
+  assert.equal(made.writes, 1);
+  made.render();
+  made.render();
+  assert.equal(made.writes, 1);
+  const buy = { writes: 0, set innerHTML(value) { this.writes += 1; } };
+  const sell = { writes: 0, set innerHTML(value) { this.writes += 1; } };
+  made.nodes = { '.widget-buy': buy, '.widget-sell': sell };
+  made.connectedCallback();
+  Date.now = () => NOW + 60000;
+  t.mock.timers.tick(60000);
+  assert.deepEqual([made.writes, buy.writes, sell.writes], [1, 0, 0]);
+  made.disconnectedCallback();
+  Date.now = () => NOW;
+  const filling = card({ show_widget: 'bars', widget_effect: 'fill', widget_hours: 4 });
+  const filled = { writes: 0, set innerHTML(value) { this.writes += 1; } };
+  filling.nodes = { '.widget-buy': filled, '.widget-sell': { set innerHTML(value) {} } };
+  filling.connectedCallback();
+  Date.now = () => NOW + 60000;
+  t.mock.timers.tick(60000);
+  assert.deepEqual([filling.writes, filled.writes], [1, 1]);
+  filling.render();
+  assert.equal(filling.writes, 2);
+  filling.disconnectedCallback();
+});
+
+test('a dashboard that comes back into view is brought up to date at once', () => {
+  const listeners = {};
+  globalThis.document = {
+    hidden: false,
+    addEventListener: (type, handler) => { listeners[type] = handler; },
+    removeEventListener: (type, handler) => { if (listeners[type] === handler) delete listeners[type]; }
+  };
+  try {
+    const made = card({ show_widget: 'bars', widget_effect: 'fill', widget_hours: 4 });
+    made.connectedCallback();
+    let ticks = 0;
+    made._tick = () => { ticks += 1; };
+    globalThis.document.hidden = true;
+    listeners.visibilitychange();
+    assert.equal(ticks, 0);
+    globalThis.document.hidden = false;
+    listeners.visibilitychange();
+    assert.equal(ticks, 1);
+    made.disconnectedCallback();
+    assert.equal(listeners.visibilitychange, undefined);
+  } finally {
+    delete globalThis.document;
+  }
 });

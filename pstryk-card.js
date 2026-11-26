@@ -1,3 +1,35 @@
+const PSTRYK_FORMATTERS = new Map();
+const PSTRYK_LABELS = new Map();
+const PSTRYK_DAY_OFFSETS = new Map();
+
+function pstrykFormatter(zone) {
+  const key = zone || '';
+  if (!PSTRYK_FORMATTERS.has(key)) {
+    let formatter = null;
+    try {
+      formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: zone,
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch (error) {
+      formatter = null;
+    }
+    PSTRYK_FORMATTERS.set(key, formatter);
+  }
+  return PSTRYK_FORMATTERS.get(key);
+}
+
+function pstrykParts(instant, zone) {
+  const parts = pstrykFormatter(zone).formatToParts(new Date(instant));
+  return Object.fromEntries(parts.map(part => [part.type, Number(part.value)]));
+}
+
 class PstrykCard extends HTMLElement {
   constructor() {
     super();
@@ -8,18 +40,61 @@ class PstrykCard extends HTMLElement {
     this._translations = null;
     this._isPolish = false;
     this._timer = null;
+    this._slotCache = new WeakMap();
+    this._drawnSlots = '';
+    this._drawnHtml = null;
+    this._drawnWidgets = { buy: null, sell: null };
+    this._onVisible = () => {
+      if (!document.hidden) this._tick();
+    };
   }
 
   connectedCallback() {
     clearInterval(this._timer);
-    this._timer = setInterval(() => {
-      if (this._hass && this._config.show_widget && this._config.show_widget !== 'none') this.render();
-    }, 60000);
+    this._timer = setInterval(() => this._tick(), 60000);
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisible);
   }
 
   disconnectedCallback() {
     clearInterval(this._timer);
     this._timer = null;
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this._onVisible);
+  }
+
+  _tick() {
+    if (!this._hass || !this._showsWidget()) return;
+    const sides = this._sides();
+    const nodes = sides.map(side => this.shadowRoot.querySelector(`.widget-${side.name}`));
+    if (nodes.some(node => !node) || this._slotKey(sides) !== this._drawnSlots) {
+      this.render();
+      return;
+    }
+    const widgets = this._widgets(sides);
+    sides.forEach((side, index) => {
+      if (widgets[side.name] === this._drawnWidgets[side.name]) return;
+      nodes[index].innerHTML = widgets[side.name];
+      this._drawnWidgets[side.name] = widgets[side.name];
+      this._drawnHtml = null;
+    });
+  }
+
+  _showsWidget() {
+    return Boolean(this._config.show_widget) && this._config.show_widget !== 'none' && this._config.card_mode !== 'super_compact';
+  }
+
+  _sides() {
+    const now = Date.now();
+    return [['buy', this._config.buy_entity, 'buy_price'], ['sell', this._config.sell_entity, 'sell_price']].map(([name, entityId, label]) => {
+      const entity = this._hass?.states?.[entityId];
+      const slots = this._slots(entity);
+      const index = this._currentIndex(slots, now);
+      const color = entity ? this.getPriceColor(entity, entity.state, slots, index) : 'var(--primary-text-color)';
+      return { name, label, entity, slots, index, color, now };
+    });
+  }
+
+  _slotKey(sides) {
+    return sides.map(side => side.index === -1 ? 'none' : String(side.slots[side.index].at)).join('|');
   }
 
   _escape(value) {
@@ -89,7 +164,10 @@ class PstrykCard extends HTMLElement {
       defaults.show_widget = 'none';
     }
     
-    return { ...defaults, ...config };
+    const merged = { ...defaults, ...config };
+    const hours = Math.floor(Number(merged.widget_hours));
+    merged.widget_hours = Number.isFinite(hours) && hours >= 1 ? Math.min(hours, 48) : defaults.widget_hours;
+    return merged;
   }
 
   set hass(hass) {
@@ -102,15 +180,20 @@ class PstrykCard extends HTMLElement {
       const newBuy = hass.states[this._config.buy_entity];
       const newSell = hass.states[this._config.sell_entity];
       
-      if (oldBuy === newBuy && oldSell === newSell) {
+      const sameSettings = oldHass.language === hass.language &&
+        oldHass.locale?.language === hass.locale?.language &&
+        oldHass.locale?.time_zone === hass.locale?.time_zone &&
+        oldHass.config?.time_zone === hass.config?.time_zone;
+
+      if (oldBuy === newBuy && oldSell === newSell && sameSettings) {
         return;
       }
+      if (!sameSettings) {
+        this._translations = null;
+        this._slotCache = new WeakMap();
+      }
     }
-    
-    if (oldHass && oldHass.language !== hass.language) {
-      this._translations = null;
-    }
-    
+
     this.render();
   }
 
@@ -176,7 +259,7 @@ class PstrykCard extends HTMLElement {
     return type === 'buy' ? numValue > limit : numValue < limit;
   }
 
-  getPriceColor(entity, price) {
+  getPriceColor(entity, price, slots = this._slots(entity), index = this._currentIndex(slots, Date.now())) {
     if (!entity?.attributes) return 'var(--primary-text-color)';
     
     const currentPrice = parseFloat(price);
@@ -184,13 +267,11 @@ class PstrykCard extends HTMLElement {
     
     const epsilon = 0.001;
     const zone = this._serverZone();
-    const slots = this._slots(entity);
-    const index = this._currentIndex(slots, Date.now());
     const matches = (list) => {
       const entries = Array.isArray(list) ? list : [];
       const timed = entries.length > 0 && entries.every(p => p && typeof p === 'object' && p.start);
       if (timed && index !== -1) {
-        return entries.some(p => this._toInstant(p.start, zone) === slots[index].at);
+        return entries.some(p => this._instants(p.start, zone).includes(slots[index].at));
       }
       return entries.some(p => Math.abs((p && typeof p === 'object' ? p.price : p) - currentPrice) < epsilon);
     };
@@ -205,6 +286,16 @@ class PstrykCard extends HTMLElement {
     const numPrice = parseFloat(price);
     if (isNaN(numPrice)) return '--';
     return `${numPrice.toFixed(2)} ${unit}`;
+  }
+
+  formatAttribute(value, unit) {
+    if (typeof value === 'number') return this.formatPrice(value, unit);
+    if (typeof value === 'string') {
+      const text = value.trim();
+      return /^-?\d+([.,]\d+)?$/.test(text) ? this.formatPrice(text.replace(',', '.'), unit) : this._escape(text);
+    }
+    if (typeof value === 'boolean') return String(value);
+    return '--';
   }
 
   getAttributeValue(entity, config) {
@@ -259,63 +350,71 @@ class PstrykCard extends HTMLElement {
 
   _serverZone() {
     const zone = this._hass?.config?.time_zone;
-    if (!zone) return undefined;
-    try {
-      new Intl.DateTimeFormat('en-GB', { timeZone: zone });
-      return zone;
-    } catch (error) {
-      return undefined;
-    }
+    return zone && pstrykFormatter(zone) ? zone : undefined;
   }
 
   _zoneOffset(instant, zone) {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: zone,
-      hourCycle: 'h23',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    }).formatToParts(new Date(instant));
-    const p = Object.fromEntries(parts.map(part => [part.type, Number(part.value)]));
+    const p = pstrykParts(instant, zone);
     return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(instant / 1000) * 1000;
   }
 
-  _toInstant(start, zone) {
+  _dayOffset(noon, zone) {
+    const key = `${zone}|${noon}`;
+    if (!PSTRYK_DAY_OFFSETS.has(key)) {
+      if (PSTRYK_DAY_OFFSETS.size > 256) PSTRYK_DAY_OFFSETS.clear();
+      const before = this._zoneOffset(noon - 86400000, zone);
+      const after = this._zoneOffset(noon + 86400000, zone);
+      PSTRYK_DAY_OFFSETS.set(key, before === after && Math.abs(before) <= 43200000 ? before : null);
+    }
+    return PSTRYK_DAY_OFFSETS.get(key);
+  }
+
+  _instants(start, zone) {
     const text = String(start);
-    if (/(Z|[+-]\d{2}:?\d{2})$/.test(text)) return new Date(text).getTime();
+    if (/(Z|[+-]\d{2}:?\d{2})$/.test(text)) return [new Date(text).getTime()].filter(isFinite);
     const m = text.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
-    if (!m) return NaN;
-    if (!zone) return new Date(text).getTime();
+    if (!m) return [];
+    if (!zone) return [new Date(text).getTime()].filter(isFinite);
     const wall = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
-    const first = wall - this._zoneOffset(wall, zone);
-    return wall - this._zoneOffset(first, zone);
+    const steady = this._dayOffset(Date.UTC(+m[1], +m[2] - 1, +m[3], 12), zone);
+    if (steady !== null) return [wall - steady];
+    const offsets = new Set([this._zoneOffset(wall - 86400000, zone), this._zoneOffset(wall + 86400000, zone)]);
+    return [...offsets]
+      .map(offset => wall - offset)
+      .filter(instant => this._zoneOffset(instant, zone) === wall - instant)
+      .sort((a, b) => a - b);
   }
 
   _hourLabel(instant, zone) {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: zone,
-      hourCycle: 'h23',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).formatToParts(new Date(instant));
-    const p = Object.fromEntries(parts.map(part => [part.type, part.value]));
-    return `${Number(p.hour)}:${p.minute}`;
+    const key = `${zone || ''}|${instant}`;
+    if (!PSTRYK_LABELS.has(key)) {
+      if (PSTRYK_LABELS.size > 512) PSTRYK_LABELS.clear();
+      const p = pstrykParts(instant, zone);
+      PSTRYK_LABELS.set(key, `${p.hour}:${String(p.minute).padStart(2, '0')}`);
+    }
+    return PSTRYK_LABELS.get(key);
   }
 
   _slots(entity) {
     const allPrices = entity?.attributes?.['All prices'];
     if (!Array.isArray(allPrices)) return [];
     const serverZone = this._serverZone();
-    return allPrices
-      .map(item => ({
-        price: parseFloat(item?.price),
-        at: item?.start ? this._toInstant(item.start, serverZone) : NaN
-      }))
+    const cached = this._slotCache.get(entity);
+    if (cached && cached.zone === serverZone) return cached.slots;
+
+    const seen = new Map();
+    const slots = allPrices
+      .map(item => {
+        const key = String(item?.start);
+        const instants = item?.start ? this._instants(item.start, serverZone) : [];
+        const earlier = seen.get(key) || 0;
+        seen.set(key, earlier + 1);
+        return { price: parseFloat(item?.price), at: instants[Math.min(earlier, instants.length - 1)] ?? NaN };
+      })
       .filter(item => isFinite(item.price) && isFinite(item.at))
       .sort((a, b) => a.at - b.at);
+    this._slotCache.set(entity, { zone: serverZone, slots });
+    return slots;
   }
 
   _slotLength(slots, index) {
@@ -331,25 +430,39 @@ class PstrykCard extends HTMLElement {
     return now - slots[currentIndex].at < this._slotLength(slots, currentIndex) ? currentIndex : -1;
   }
 
-  generateWidgetData(entity) {
+  generateWidgetData(entity, slots = this._slots(entity), now = Date.now(), currentIndex = this._currentIndex(slots, now)) {
     const empty = { data: [], hours: [], dotPosition: 0 };
-    const slots = this._slots(entity);
-    const now = Date.now();
-    const currentIndex = this._currentIndex(slots, now);
     if (currentIndex === -1) return empty;
 
     const displayZone = this._hass?.locale?.time_zone === 'server' ? this._serverZone() : undefined;
     const current = slots[currentIndex];
     const length = this._slotLength(slots, currentIndex);
-
-    const hoursToShow = Math.min(this._config.widget_hours || 24, slots.length - currentIndex);
-    const futureData = slots.slice(currentIndex, currentIndex + hoursToShow);
+    const futureData = slots.slice(currentIndex, currentIndex + this._config.widget_hours);
 
     return {
       data: futureData.map(d => d.price),
       hours: futureData.map(d => this._hourLabel(d.at, displayZone)),
       dotPosition: (now - current.at) / length
     };
+  }
+
+  _widgets(sides = this._sides()) {
+    const widgets = { buy: '', sell: '' };
+    if (!this._showsWidget()) return widgets;
+    const draw = this._config.show_widget === 'sparkline' ? this.createSparkline : this.createBars;
+    const height = this._getModeStyles().widget.height;
+    for (const side of sides) {
+      if (!side.entity) continue;
+      const data = this.generateWidgetData(side.entity, side.slots, side.now, side.index);
+      widgets[side.name] = data.data.length > 0 ?
+        draw.call(this, data.data, data.hours, height, side.color, data.dotPosition, this._unit(side.entity)) :
+        `
+        <div style="font-size: 11px; color: var(--secondary-text-color); margin-top: 8px; text-align: center;">
+          ${this.translate('no_data')} (${this.translate(side.label)})
+        </div>
+      `;
+    }
+    return widgets;
   }
 
   createSparkline(data, hours, height, color, dotPosition, unit = 'PLN/kWh') {
@@ -659,6 +772,7 @@ class PstrykCard extends HTMLElement {
     const sellEntity = this._hass.states[this._config.sell_entity];
 
     if (!buyEntity || !sellEntity) {
+      this._drawnHtml = null;
       this.shadowRoot.innerHTML = `
         <ha-card>
           <div style="padding: 16px;">
@@ -681,8 +795,9 @@ class PstrykCard extends HTMLElement {
     const sellUnit = this._unit(sellEntity);
     const buyAlert = this.checkAlert('buy', buyPrice);
     const sellAlert = this.checkAlert('sell', sellPrice);
-    const buyColor = this.getPriceColor(buyEntity, buyPrice);
-    const sellColor = this.getPriceColor(sellEntity, sellPrice);
+    const sides = this._sides();
+    const buyColor = sides[0].color;
+    const sellColor = sides[1].color;
     
     this._remainingHours = null;
 
@@ -693,26 +808,8 @@ class PstrykCard extends HTMLElement {
     const sellAttribute = sellAttrConfig ? this.getAttributeValue(sellEntity, sellAttrConfig) : null;
     const sellAttributeLabel = this.getAttributeLabel(sellAttrConfig);
 
-    let buyWidgetHtml = '';
-    let sellWidgetHtml = '';
-    if (this._config.show_widget !== 'none' && !isSuperCompact) {
-      const buyData = this.generateWidgetData(buyEntity);
-      const sellData = this.generateWidgetData(sellEntity);
-
-      const noData = (label) => `
-        <div style="font-size: 11px; color: var(--secondary-text-color); margin-top: 8px; text-align: center;">
-          ${this.translate('no_data')} (${label})
-        </div>
-      `;
-
-      const draw = this._config.show_widget === 'sparkline' ? this.createSparkline : this.createBars;
-      buyWidgetHtml = buyData.data.length > 0 ?
-        draw.call(this, buyData.data, buyData.hours, styles.widget.height, buyColor, buyData.dotPosition, buyUnit) :
-        noData(this.translate('buy_price'));
-      sellWidgetHtml = sellData.data.length > 0 ?
-        draw.call(this, sellData.data, sellData.hours, styles.widget.height, sellColor, sellData.dotPosition, sellUnit) :
-        noData(this.translate('sell_price'));
-    }
+    const widgets = this._widgets(sides);
+    const widgetHtml = (side) => this._showsWidget() ? `<div class="widget-${side}">${widgets[side]}</div>` : '';
 
     const statusBadge = (entity) => {
       if (!this._config.show_price_status || isSuperCompact) return '';
@@ -733,7 +830,7 @@ class PstrykCard extends HTMLElement {
       if (isSuperCompact || !attrConfig || value === null || value === undefined) return '';
       return `
         <div class="attribute-info">
-          ${this._escape(label)}: <span class="attribute-value">${this.formatPrice(value, unit)}</span>
+          ${this._escape(label)}: <span class="attribute-value">${this.formatAttribute(value, unit)}</span>
         </div>
       `;
     };
@@ -786,7 +883,7 @@ class PstrykCard extends HTMLElement {
       }
     ` : '';
 
-    this.shadowRoot.innerHTML = `
+    const html = `
       <style>
         :host {
           display: block;
@@ -947,7 +1044,7 @@ class PstrykCard extends HTMLElement {
                 ${this.formatPrice(buyPrice, buyUnit)}
               </div>
               ${attributeHtml(buyAttribute, buyAttributeLabel, buyAttrConfig, buyUnit)}
-              ${buyWidgetHtml}
+              ${widgetHtml('buy')}
             `}
           </div>
           
@@ -973,7 +1070,7 @@ class PstrykCard extends HTMLElement {
                 ${this.formatPrice(sellPrice, sellUnit)}
               </div>
               ${attributeHtml(sellAttribute, sellAttributeLabel, sellAttrConfig, sellUnit)}
-              ${sellWidgetHtml}
+              ${widgetHtml('sell')}
             `}
           </div>
         </div>
@@ -981,6 +1078,12 @@ class PstrykCard extends HTMLElement {
         ${legendHtml}
       </ha-card>
     `;
+
+    this._drawnSlots = this._slotKey(sides);
+    if (html === this._drawnHtml) return;
+    this.shadowRoot.innerHTML = html;
+    this._drawnHtml = html;
+    this._drawnWidgets = { ...widgets };
 
     if (this._config.click_action !== 'none') {
       this.shadowRoot.querySelectorAll('.price-box').forEach((box, index) => {

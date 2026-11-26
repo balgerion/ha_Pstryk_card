@@ -61,7 +61,7 @@ show_title: true                  # true | false
 show_legend: true                 # true | false
 show_widget: sparkline            # none | bars | sparkline
 widget_effect: pulse              # none | pulse (sparkline) | fill (bars)
-widget_hours: 24                  # 1-24
+widget_hours: 24                  # 1-48
 alert_buy_above: 1.15             # liczba lub null
 alert_sell_below: 0.25            # liczba lub null
 hover_effect: lift                # none | lift | glow | shake | pulse
@@ -76,7 +76,7 @@ sell_entity: sensor.pstryk_current_sell_price
 card_mode: compact                # full | compact | super_compact
 show_widget: bars                 # none | bars | sparkline
 widget_effect: fill               # none | fill (bars) | pulse (sparkline) 
-widget_hours: 12                  # 1-24
+widget_hours: 12                  # 1-48
 hover_effect: glow                # none | lift | glow | shake | pulse
 attribute_config: average_24      # next_hour | average_remaining | average_24 | null | custom_attribute
 ```
@@ -100,10 +100,10 @@ alert_sell_below: 0.1             # liczba lub null
 * **title** (`string`, domyślnie `Energy Prices`) – tekst nagłówka
 * **show\_title** (`true`/`false`, domyślnie `true`) – wyświetl tytuł (w `super_compact` zawsze ukryty)
 * **show\_legend** (`true`/`false`, domyślnie `true` w `full`) – legenda kolorów (tylko w `full`)
-* **attribute\_config** (`next_hour`/`average_remaining`/`average_24`/`sunset_sunrise`/nazwa atrybutu/`null`, domyślnie `next_hour`) – dodatkowy wiersz pod ceną: następna godzina, średnia do końca doby, średnia 24h, średnia wschód–zachód albo dowolny atrybut encji; `null` wyłącza (w `super_compact` zawsze wyłączony)
+* **attribute\_config** (`next_hour`/`average_remaining`/`average_24`/`sunset_sunrise`/nazwa atrybutu/`null`, domyślnie `next_hour`) – dodatkowy wiersz pod ceną: następna godzina, średnia do końca doby, średnia 24h, średnia wschód–zachód albo dowolny atrybut encji (liczba jest wypisywana jak cena, tekst bez zmian); `null` wyłącza (w `super_compact` zawsze wyłączony)
 * **buy\_attribute\_config** / **sell\_attribute\_config** (te same wartości co `attribute_config`, domyślnie `null`) – osobny atrybut dla kafelka kupna/sprzedaży; nadpisuje wspólne `attribute_config`
 * **show\_widget** (`none`/`bars`/`sparkline`, domyślnie `none`) – wykres cen do końca doby (w `super_compact` niedostępny)
-* **widget\_hours** (`1-24`, domyślnie `24`, w `compact` `12`) – ile godzin pokazać na wykresie, licząc od bieżącej (maksymalnie do końca doby)
+* **widget\_hours** (`1-48`, domyślnie `24`, w `compact` `12`) – ile godzin pokazać na wykresie, licząc od bieżącej (tyle, ile jest na liście cen: do końca doby, a gdy integracja zna już ceny na jutro, także za północ); wartość spoza zakresu albo nieliczbowa daje wartość domyślną
 * **widget\_effect** (`none`/`pulse`/`fill`, domyślnie `none`) – znacznik aktualnej godziny: `pulse` = pulsująca kropka (sparkline), `fill` = wypełniający się słupek z etykietą godziny (bars)
 * **show\_price\_status** (`true`/`false`, domyślnie `false`) – badge Tanio/Drogo w lewym górnym rogu kafelka wg flag `Is cheap`/`Is expensive` z API (w `super_compact` niedostępny)
 * **alert\_buy\_above** (liczba lub `null`, domyślnie `null`) – alert (pulsująca ramka + badge), gdy cena zakupu przekroczy próg; `0` jest zwykłym progiem
@@ -119,7 +119,10 @@ Do wersji 4.3.0 bieżąca godzina była brana z zegara przeglądarki: o 15:49 cz
 
 ## Jak karta liczy
 
-* Znacznik bieżącej godziny (wypełnienie słupka, kropka na linii) odświeża się co minutę, także gdy pulpit jest stale otwarty, a o pełnej godzinie wykres sam przechodzi na następną.
+* Znacznik bieżącej godziny (wypełnienie słupka, kropka na linii) odświeża się co minutę, także gdy pulpit jest stale otwarty, a o pełnej godzinie wykres sam przechodzi na następną. Co minutę podmieniany jest tylko wykres; reszta karty zostaje, więc animacja alertu nie zaczyna się od nowa. Pulpit, który wraca z tła, odświeża wykres od razu.
+* Karta zapisuje do strony tylko wtedy, gdy zmieniło się to, co pokazuje. Przeliczenie godzin na strefę serwera jest wykonywane raz na zmianę encji, a nie przy każdym rysowaniu.
+* Zmiana języka albo strefy czasowej w profilu użytkownika jest widoczna od razu, bez czekania na zmianę ceny.
+* W dniu zmiany czasu na zimowy powtórzona godzina 02:00 to dwa słupki, gdy lista cen ma 25 pozycji, a jedna cena dla obu godzin, gdy ma 24. Wiosną godzina, której nie ma, jest pomijana.
 * Kolor ceny (zielony/czerwony) zależy od tego, czy **bieżąca godzina** jest na liście `Best prices` albo `Worst prices` encji, a nie od tego, czy cena jest równa którejś z tych list. Gdy listy zawierają same liczby (starsze wersje integracji), karta porównuje ceny jak dawniej.
 * Jednostka przy cenie pochodzi z encji (`unit_of_measurement`); gdy encja jej nie podaje, karta pisze `PLN/kWh`.
 * Jeden albo dwa ostatnie słupki doby zachowują szerokość słupka z czterech, a linia przy ostatniej godzinie doby jest pozioma, zamiast znikać.
@@ -139,4 +142,5 @@ Do wersji 4.3.0 bieżąca godzina była brana z zegara przeglądarki: o 15:49 cz
 * tytuł i nazwy atrybutów trafiały do HTML bez zabezpieczenia
 * jednostka `PLN/kWh` była wpisana na stałe
 * przy ostatniej godzinie doby linia znikała, a pojedynczy słupek zajmował całą szerokość
-* zmiana konfiguracji była widoczna dopiero po zmianie ceny; „Buy”/„Sell” w komunikacie o braku danych nie były tłumaczone
+* zmiana konfiguracji, języka i strefy profilu była widoczna dopiero po zmianie ceny; „Buy”/„Sell” w komunikacie o braku danych nie były tłumaczone
+* atrybut tekstowy w dodatkowym wierszu był wypisywany jak cena (`Last updated` jako `2026.00 PLN/kWh`); `widget_hours` spoza zakresu dawał „brak danych”
